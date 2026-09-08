@@ -1,0 +1,102 @@
+# MCP-Linx configuration
+# Конфигурация плагинов и окружения
+
+environment:
+  mode: development  # development | production
+  debug: true
+
+security:
+  readonly: true
+  max_command_output_size: 10000  # байт
+  max_log_lines: 500
+  max_search_results: 100
+  command_timeout_seconds: 30
+  allowed_hosts:
+    - "localhost"
+    - "127.0.0.1"
+
+telemetry:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  audit_log: true
+  audit_log_file: "/var/log/mcp-linx/audit.log"
+
+plugins:
+  enabled:
+    - linux
+    - nginx
+    - docker
+    - postgres
+  
+  linux:
+    enabled: true
+    # Если SSH не указан — используется локальный хост
+    ssh:
+      host: null          # null = localhost
+      port: 22
+      username: null      # null = текущий пользователь
+      key_file: null      # null = default keys
+      password: null      # не рекомендуется
+  
+  nginx:
+    enabled: true
+    config_path: "/etc/nginx/nginx.conf"
+    log_path: "/var/log/nginx"
+    access_log: "access.log"
+    error_log: "error.log"
+    # Подключение к stub_status (если настроен)
+    stub_status_url: null  # например: "http://127.0.0.1/nginx_status"
+    ssh:
+      host: null
+      port: 22
+      username: null
+      key_file: null
+  
+  docker:
+    enabled: true
+    # Docker socket или remote API
+    host: "unix:///var/run/docker.sock"  # или "tcp://docker-host:2375"
+    timeout_seconds: 10
+    # Фильтры по умолчанию
+    filters:
+      status: "running"  # по умолчанию показывать running контейнеры
+  
+  postgres:
+    enabled: true
+    # Подключение к PostgreSQL
+    host: "localhost"
+    port: 5432
+    database: "postgres"
+    user: "postgres"
+    password: ""  # из_env: POSTGRES_PASSWORD
+    ssl_mode: "prefer"  # disable, allow, prefer, require, verify-ca, verify-full
+    # Лимиты
+    max_connections_query: 100
+    slow_query_threshold_ms: 1000
+    # SSH tunnel (опционально)
+    ssh:
+      host: null
+      port: 22
+      username: null
+      key_file: null
+      tunnel_host: null  # хост для туннеля (если PostgreSQL за SSH)
+      tunnel_port: 5432
+
+logging:
+  version: 1
+  disable_existing_loggers: false
+  formatters:
+    console:
+      format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    json:
+      class: structlog.stdlib.ProcessorFormatter
+      format: "%(message)s"
+  
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: console
+  
+  root:
+    level: INFO
+    handlers: [console]
