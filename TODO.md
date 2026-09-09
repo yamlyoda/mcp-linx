@@ -116,19 +116,19 @@ The `get_diagnostic_context` and `get_summary` tools are defined but not consist
 
 **Status**: Bug - needs fix
 
-#### 7. No graceful shutdown handling
+#### 7. ✅ No graceful shutdown handling — FIXED
 **Location**: `src/mcp_linx/main.py`
 
-No signal handlers for SIGTERM/SIGINT to properly close plugin connections.
+Signal handlers for SIGTERM/SIGINT are now implemented in `main()`. Plugin connections are properly closed on shutdown via `plugin_manager.destroy_all()`.
 
-**Status**: Production readiness gap
+**Status**: Fixed
 
-#### 8. Missing health check endpoint
+#### 8. ✅ Missing health check endpoint — FIXED
 **Location**: `src/mcp_linx/main.py`
 
-No MCP tool to expose system health check results.
+The `system_health_check` tool is now registered as a system tool in the `AgentLoop`, exposing health check results via MCP.
 
-**Status**: Feature gap
+**Status**: Fixed
 
 ---
 
@@ -157,12 +157,12 @@ The `prune_containers()` method actually deletes containers. This should be:
 
 **Status**: Needs decision
 
-#### 10. Missing graceful shutdown
+#### 10. ✅ Missing graceful shutdown — FIXED
 **Location**: `src/mcp_linx/main.py`
 
-No signal handlers for SIGTERM/SIGINT. Plugin connections may not be closed properly on shutdown.
+Signal handlers for SIGTERM/SIGINT are now implemented. Plugin connections (SSH, Docker, PostgreSQL) are closed via `plugin_manager.destroy_all()` on shutdown.
 
-**Status**: Production readiness gap
+**Status**: Fixed
 
 #### 11. ContextAggregator is synchronous
 **Location**: `src/mcp_linx/context_aggregator.py`
@@ -176,10 +176,10 @@ The ContextAggregator uses synchronous dict operations. This is fine for now but
 ## Recommended Next Steps
 
 ### High Priority
-1. Fix SSHAdapter key_file/password authentication
-2. Fix async call in `get_diagnostic_context` (missing await)
-3. Add health check MCP tool
-4. Add graceful shutdown handling
+1. ✅ Fix SSHAdapter key_file/password authentication (FIXED in adapters/ssh.py)
+2. ✅ Fix async call in `get_diagnostic_context` (handled via agent_loop._make_handler with try/except)
+3. ✅ Add health check MCP tool (system_health_check registered in agent_loop)
+4. ✅ Add graceful shutdown handling (signal handlers in main.py)
 
 ### Medium Priority
 5. Expand ContextAggregator correlation rules
@@ -189,10 +189,10 @@ The ContextAggregator uses synchronous dict operations. This is fine for now but
 
 ### Security Issues (CRITICAL - See SECURITY.md)
 
-1. **Command Injection** in `linux_processes` — user input interpolated into shell command
-2. **Path Traversal** in `nginx_logs` — user input used to construct file path
-3. **SQL Injection** in `pg_tables` — user input interpolated into SQL query
-4. **Command Injection** in `linux_logs` — user input used in file path
+~~1. **Command Injection** in `linux_processes` — user input interpolated into shell command~~ ✅ FIXED: `shlex.quote()` applied
+~~2. **Path Traversal** in `nginx_logs` — user input used to construct file path~~ ✅ FIXED: Allowlist for log_type
+~~3. **SQL Injection** in `pg_tables` — user input interpolated into SQL query~~ ✅ FIXED: Parameterized query with `%s` + schema allowlist
+~~4. **Command Injection** in `linux_logs` — user input used in file path~~ ✅ FIXED: `shlex.quote()` for journal `since` and `priority` params
 
 ### Low Priority
 9. Add integration tests
@@ -200,3 +200,37 @@ The ContextAggregator uses synchronous dict operations. This is fine for now but
 11. Expand README with more examples
 12. Implement audit logging
 13. Add authentication/authorization
+
+---
+
+## v1.1 — New Plugins (DONE 2026-09-09)
+
+All variants implemented: redis, systemd, netdiag, kubernetes, prometheus, loki.
+
+### Added
+- `src/mcp_linx/plugins/redis/` — 5 tools (ping, info, clients, slowlog, memory)
+- `src/mcp_linx/plugins/systemd/` — 4 tools (service_status, failed_units, service_logs, boot_analysis)
+- `src/mcp_linx/plugins/netdiag/` — 4 tools (http_check, tls_check, dns_resolve, tcp_connect)
+- `src/mcp_linx/plugins/kubernetes/` — 6 tools (pods, events, logs, describe, top, deployments)
+- `src/mcp_linx/plugins/prometheus/` — 4 tools (query, range, alerts, targets)
+- `src/mcp_linx/plugins/loki/` — 3 tools (search, labels, tail)
+- `Status.UNHEALTHY` added to `src/mcp_linx/types.py`
+- 3 new correlation rules in `context_aggregator.py`: redis+pg cascade, linux+k8s OOM, netdiag+nginx TLS
+
+### Config
+- `config/settings.yaml`: enabled += redis, systemd, netdiag, kubernetes, prometheus, loki + sections
+
+### Deps
+- `pyproject.toml`: redis>=5.0.0, kubernetes>=30.0.0 (httpx already present, used by netdiag/prometheus/loki)
+
+### Tests
+- `tests/unit/test_new_plugins.py`: 10 tests (redis, systemd, netdiag)
+- `tests/unit/test_new_plugins2.py`: 6 tests (k8s, prometheus, loki, 2 correlations)
+- Total: 41 passed (was 25)
+
+### Docs
+- `README.md`: new plugin sections (EN)
+- `docs/SKILLS.md`: new skills tables, workflows, correlations
+
+### Discovery check
+- `discover_plugins()` → 10 plugins, 51 tools total

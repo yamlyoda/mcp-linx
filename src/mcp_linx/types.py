@@ -14,6 +14,7 @@ class Status(str, Enum):
     CRITICAL = "critical"
     UNKNOWN = "unknown"
     ERROR = "error"
+    UNHEALTHY = "unhealthy"
 
 
 class ToolResult:

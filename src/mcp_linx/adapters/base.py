@@ -85,8 +85,8 @@ class LocalAdapter(BaseAdapter):
         # Экранирование аргументов
         args = shlex.split(command)
         
-        proc = await asyncio.create_subprocess_exec(
-            *args,
+        proc = await asyncio.create_subprocess_shell(
+            command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

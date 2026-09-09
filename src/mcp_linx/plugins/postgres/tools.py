@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from psycopg2 import sql
+
 from mcp_linx.plugins.postgres import PostgresPlugin
 from mcp_linx.types import ToolResult
 
@@ -210,22 +212,29 @@ async def pg_tables(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResul
     try:
         schema = params.get("schema", "public")
 
-        query = f"""
-        SELECT
-            schemaname, relname AS table_name,
-            n_live_tup AS rows_count, n_dead_tup AS dead_rows,
-            n_mod_since_analyze AS unanalyzed_changes,
-            pg_size_pretty(pg_relation_size(schemaname || '.' || relname)) AS size,
-            pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size,
-            last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-            vacuum_count, autovacuum_count, analyze_count, autoanalyze_count
-        FROM pg_stat_user_tables
-        WHERE schemaname = '{schema}'
-        ORDER BY n_live_tup DESC
-        LIMIT 50;
-        """
+        # Validate schema against allowlist of valid PostgreSQL identifiers
+        valid_schemas = {"public", "pg_catalog", "information_schema"}
+        if schema not in valid_schemas:
+            return ToolResult.error(
+                f"Invalid schema '{schema}'. Allowed: public, pg_catalog, information_schema"
+            )
 
-        tables = await plugin._execute_query(query)
+        query = sql.SQL("""
+            SELECT
+                schemaname, relname AS table_name,
+                n_live_tup AS rows_count, n_dead_tup AS dead_rows,
+                n_mod_since_analyze AS unanalyzed_changes,
+                pg_size_pretty(pg_relation_size(schemaname || '.' || relname)) AS size,
+                pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size,
+                last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+                vacuum_count, autovacuum_count, analyze_count, autoanalyze_count
+            FROM pg_stat_user_tables
+            WHERE schemaname = %s
+            ORDER BY n_live_tup DESC
+            LIMIT 50;
+        """)
+
+        tables = await plugin._execute_query(query, (schema,))
 
         needs_vacuum = [
             t for t in tables

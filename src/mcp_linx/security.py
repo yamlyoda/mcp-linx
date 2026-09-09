@@ -39,8 +39,10 @@ class SecurityGuard:
         "cat", "ls", "ps", "top", "htop", "free", "df", "du",
         "ip", "ss", "netstat", "ping", "traceroute", "curl", "wget",
         "journalctl", "dmesg", "grep", "awk", "sed", "tail", "head",
-        "mount", "df", "fdisk", "lsof", "nmcli", "systemctl", "service",
-        "docker", "psql", "pg_isready", "nginx", "nginx", "curl",
+        "mount", "fdisk", "lsblk", "lsof", "nmcli", "systemctl", "service",
+        "docker", "psql", "pg_isready", "nginx", "curl",
+        "uname", "uptime", "nproc", "vmstat", "swapon", "vm_stat", "sysctl",
+        "redis-cli", "kubectl", "systemd-analyze",
     ]
     
     def __init__(self, config: dict[str, Any] | None = None):

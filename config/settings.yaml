@@ -26,6 +26,12 @@ plugins:
     - nginx
     - docker
     - postgres
+    - redis
+    - systemd
+    - netdiag
+    - kubernetes
+    - prometheus
+    - loki
   
   linux:
     enabled: true
@@ -80,6 +86,52 @@ plugins:
       key_file: null
       tunnel_host: null  # хост для туннеля (если PostgreSQL за SSH)
       tunnel_port: 5432
+
+  redis:
+    enabled: true
+    host: "localhost"
+    port: 6379
+    password: ""  # из env: REDIS_PASSWORD
+    ssh:
+      host: null
+      port: 22
+      username: null
+      key_file: null
+
+  systemd:
+    enabled: true
+    ssh:
+      host: null
+      port: 22
+      username: null
+      key_file: null
+
+  netdiag:
+    enabled: true
+    timeout_seconds: 15
+
+  kubernetes:
+    enabled: true
+    namespace: "default"
+    kubeconfig: null  # null = ~/.kube/config
+    context: null     # null = current-context
+    ssh:
+      host: null
+      port: 22
+      username: null
+      key_file: null
+
+  prometheus:
+    enabled: true
+    base_url: "http://localhost:9090"
+    timeout_seconds: 20
+    token: ""  # из env: PROMETHEUS_TOKEN (если требуется)
+
+  loki:
+    enabled: true
+    base_url: "http://localhost:3100"
+    timeout_seconds: 20
+    token: ""  # из env: LOKI_TOKEN (если требуется)
 
 logging:
   version: 1

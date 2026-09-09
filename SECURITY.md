@@ -180,10 +180,10 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 
 - [x] No hardcoded secrets (passwords, API keys, tokens) — ✅ Passwords from config/env
 - [x] No personal data (PII) in source code — ✅ No PII found
-- [ ] All user inputs validated — ❌ Command/SQL injection possible
-- [ ] SQL queries use parameterized statements — ❌ String interpolation used
-- [ ] File paths validated against traversal — ❌ Path traversal possible
-- [ ] Shell commands use proper escaping — ❌ User input interpolated
+- [x] All user inputs validated — ✅ Command inputs use shlex.quote(), path allowlists
+- [x] SQL queries use parameterized statements — ✅ pg_tables uses %s parameterized query
+- [x] File paths validated against traversal — ✅ nginx_logs uses allowlist
+- [x] Shell commands use proper escaping — ✅ shlex.quote() applied
 - [x] Output size limited — ✅ SecurityGuard.limit_output()
 - [x] Error messages don't leak sensitive info — ✅ Generic error messages
 - [ ] Authentication/authorization implemented — ❌ Not implemented
@@ -203,12 +203,12 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 | `src/mcp_linx/adapters/ssh.py` | ✅ Clean | No hardcoded credentials |
 | `src/mcp_linx/adapters/docker.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/linux/__init__.py` | ✅ Clean | No issues |
-| `src/mcp_linx/plugins/linux/tools.py` | ❌ Vulnerable | Command injection |
+| `src/mcp_linx/plugins/linux/tools.py` | ✅ Fixed | Command injection fixed with shlex.quote() |
 | `src/mcp_linx/plugins/nginx/__init__.py` | ✅ Clean | No issues |
-| `src/mcp_linx/plugins/nginx/tools.py` | ❌ Vulnerable | Path traversal |
+| `src/mcp_linx/plugins/nginx/tools.py` | ✅ Fixed | Path traversal fixed with allowlist |
 | `src/mcp_linx/plugins/docker/__init__.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/docker/tools.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/postgres/__init__.py` | ✅ Clean | No hardcoded credentials |
-| `src/mcp_linx/plugins/postgres/tools.py` | ❌ Vulnerable | SQL injection |
+| `src/mcp_linx/plugins/postgres/tools.py` | ✅ Fixed | SQL injection fixed with parameterized query |
 | `config/settings.yaml` | ✅ Clean | Passwords from env |
 | `tests/conftest.py` | ✅ Clean | Test fixtures only |

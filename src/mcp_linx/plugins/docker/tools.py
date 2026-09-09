@@ -84,10 +84,12 @@ async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
     else:
         # Docker системная информация
         try:
+            import asyncio
+
             # Docker version
-            version = await plugin._adapter._client.version()
+            version = await asyncio.get_event_loop().run_in_executor(None, plugin._adapter._client.version)
             # Docker info
-            info = await plugin._adapter._client.info()
+            info = await asyncio.get_event_loop().run_in_executor(None, plugin._adapter._client.info)
             
             return ToolResult.ok({
                 "type": "system",
@@ -139,15 +141,45 @@ async def docker_system(plugin: DockerPlugin, params: dict[str, Any]) -> ToolRes
 
 
 async def docker_prune(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
-    """Удалить остановленные контейнеры и освободить место
-    
+    """Показать остановленные контейнеры для удаления (dry-run) или удалить с confirm=true
+
+    По умолчанию выполняется DRY-RUN: возвращается список контейнеров,
+    которые будут удалены, без actual deletion.
+
     Args:
         filters: Фильтры для контейнеров (по умолчанию {"status": "exited"})
+        execute: true = реально удалить (требуется также confirm=true)
+        confirm: явное подтверждение деструктивной операции
     """
     filters = params.get("filters", {"status": "exited"})
-    
+    execute = bool(params.get("execute", False))
+    confirm = bool(params.get("confirm", False))
+
+    if execute and not confirm:
+        return ToolResult.error(
+            "Destructive operation requires explicit confirmation: "
+            "pass confirm=true together with execute=true"
+        )
+
     try:
+        if not execute:
+            # Dry-run: список контейнеров-кандидатов без удаления
+            containers = await plugin._adapter.list_containers(
+                all_=True, filters=filters, limit=100
+            )
+            candidates = [c for c in containers if c.get("status") != "running"]
+            return ToolResult.ok({
+                "mode": "dry-run",
+                "candidates_count": len(candidates),
+                "candidates": [
+                    {"id": c.get("id"), "name": c.get("name"),
+                     "status": c.get("status"), "image": c.get("image")}
+                    for c in candidates
+                ],
+                "hint": "Это dry-run. Для реального удаления передайте execute=true и confirm=true",
+            })
+
         result = await plugin._adapter.prune_containers(filters=filters)
-        return ToolResult.ok(result)
+        return ToolResult.ok({"mode": "executed", **result})
     except Exception as e:
         return ToolResult.error(f"Failed to prune containers: {e}")

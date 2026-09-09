@@ -199,8 +199,6 @@ class StreamingAgentLoop(DefaultAgentLoop):
         """Запуск с поддержкой потоковой передачи."""
         logger.info("Starting streaming MCP server...")
         # В будущем можно добавить SSE или WebSocket транспорт
-        await super().run(mcp, plugin_manager, config)
-
         await mcp.run_async()
 
     async def shutdown(self, mcp: FastMCP, plugin_manager: PluginManager) -> None:

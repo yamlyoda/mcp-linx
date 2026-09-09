@@ -103,6 +103,58 @@ class ContextAggregator:
                     )
                 )
         
+        # Корреляция: Redis evictions + PostgreSQL slow → cache-miss cascade
+        redis_state = self._get_component_by_plugin(components, "redis")
+
+        if redis_state and postgres_state:
+            redis_issues = " ".join(redis_state.issues or []).lower()
+            if ("evict" in redis_issues or "maxmemory" in redis_issues) and postgres_state.status in [
+                Status.DEGRADED, Status.CRITICAL,
+            ]:
+                correlations.append(
+                    Correlation(
+                        type="cascade",
+                        source="redis",
+                        related=["postgres"],
+                        evidence="Redis evictions detected while PostgreSQL is slow — cache-miss cascade likely",
+                    )
+                )
+
+        # Корреляция: Kubernetes CrashLoop + Linux OOM
+        k8s_state = self._get_component_by_plugin(components, "kubernetes")
+
+        if k8s_state and linux_state:
+            k8s_issues = " ".join(k8s_state.issues or []).lower()
+            linux_issues = " ".join(linux_state.issues or []).lower()
+            if ("crashloop" in k8s_issues or "oomkilled" in k8s_issues) and (
+                "oom" in linux_issues or "memory" in linux_issues
+            ):
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="linux",
+                        related=["kubernetes"],
+                        evidence="K8s pods OOMKilled while host reports memory pressure — raise limits or add memory",
+                    )
+                )
+
+        # Корреляция: Netdiag TLS expiry
+        netdiag_state = self._get_component_by_plugin(components, "netdiag")
+
+        if netdiag_state and nginx_state:
+            netdiag_issues = " ".join(netdiag_state.issues or []).lower()
+            if ("expir" in netdiag_issues or "certificate" in netdiag_issues) and nginx_state.status in [
+                Status.DEGRADED, Status.CRITICAL,
+            ]:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="netdiag",
+                        related=["nginx"],
+                        evidence="TLS certificate issue while Nginx is failing — check cert renewal",
+                    )
+                )
+
         # Корреляция: OOM events
         if linux_state and linux_state.status == Status.CRITICAL:
             issues_str = " ".join(linux_state.issues or [])

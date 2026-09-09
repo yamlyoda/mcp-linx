@@ -62,7 +62,7 @@ class DockerAdapter(BaseAdapter):
         
         containers = await loop.run_in_executor(
             None,
-            lambda: self._client.containers.list(all=all_, filters=filters or {}),
+            lambda: self._client.containers.list(all=all_, filters=self._normalize_filters(filters)),
         )
         
         return [
@@ -72,15 +72,50 @@ class DockerAdapter(BaseAdapter):
                 "name": c.name,
                 "status": c.status,
                 "image": c.image.tags[0] if c.image.tags else c.image.id,
-                "ports": [p["PublicPort"] for p in c.ports] if c.ports else [],
-                "networks": list(c.networks.keys()) if c.networks else [],
+                "ports": self._format_ports(c.ports),
+                "networks": list(c.attrs.get("NetworkSettings", {}).get("Networks", {}).keys()),
                 "created": c.attrs.get("Created", ""),
-                "command": c.attrs.get("Path", "") + " " + " ".join(c.attrs.get("Args", [])),
+                "command": c.attrs.get("Path", "") + " " + " ".join(c.attrs.get("Args", []) or []),
                 "environment": c.attrs.get("Config", {}).get("Env", []),
                 "labels": c.attrs.get("Config", {}).get("Labels", {}),
             }
             for c in containers
         ]
+
+    @staticmethod
+    def _format_ports(ports: Any) -> list[dict[str, Any]]:
+        """Нормализовать c.ports (dict) в плоский список."""
+        if not ports:
+            return []
+        if isinstance(ports, list):
+            return ports
+        result: list[dict[str, Any]] = []
+        for container_port, bindings in ports.items():
+            if not bindings:
+                result.append({"container_port": container_port, "host_ip": None, "host_port": None})
+                continue
+            for b in bindings:
+                result.append({
+                    "container_port": container_port,
+                    "host_ip": b.get("HostIp"),
+                    "host_port": b.get("HostPort"),
+                })
+        return result
+
+    @staticmethod
+    def _normalize_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
+        """Docker API ждёт значения-списки: {"status": ["running"]}."""
+        if not filters:
+            return {}
+        normalized: dict[str, Any] = {}
+        for k, v in filters.items():
+            if isinstance(v, list):
+                normalized[k] = v
+            elif isinstance(v, dict):
+                normalized[k] = v
+            else:
+                normalized[k] = [v]
+        return normalized
     
     async def get_container_logs(
         self,
@@ -142,6 +177,55 @@ class DockerAdapter(BaseAdapter):
             "network": stats.get("networks", {}),
         }
     
+    async def get_container_info(self, container_id: str) -> dict[str, Any]:
+        """Полная информация о контейнере (attrs)."""
+        if not self._client:
+            await self.connect()
+
+        loop = asyncio.get_event_loop()
+
+        def _get() -> dict[str, Any]:
+            container = self._client.containers.get(container_id)
+            return dict(container.attrs or {})
+
+        return await loop.run_in_executor(None, _get)
+
+    async def get_events(
+        self,
+        since: str | None = None,
+        until: str | None = None,
+        event_filters: list[str] | dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Docker events: поток останавливаем после короткого окна, иначе зависнет."""
+        if not self._client:
+            await self.connect()
+
+        loop = asyncio.get_event_loop()
+
+        if isinstance(event_filters, list):
+            filters: dict[str, Any] = {"type": event_filters}
+        else:
+            filters = dict(event_filters or {})
+
+        def _collect() -> list[dict[str, Any]]:
+            kwargs: dict[str, Any] = {"filters": filters, "decode": True}
+            if since:
+                kwargs["since"] = since
+            if until:
+                kwargs["until"] = until
+            events = []
+            # Берём максимум несколько событий чтобы не блокировать executor надолго
+            for i, event in enumerate(self._client.events(**kwargs)):
+                events.append(event)
+                if i >= 19:
+                    break
+            return events
+
+        try:
+            return await asyncio.wait_for(loop.run_in_executor(None, _collect), timeout=15)
+        except asyncio.TimeoutError:
+            return []
+
     async def system_df(self) -> dict[str, Any]:
         """Информация об использовании диска Docker"""
         if not self._client:
@@ -149,20 +233,17 @@ class DockerAdapter(BaseAdapter):
         
         loop = asyncio.get_event_loop()
         
-        df = await loop.run_in_executor(None, lambda: self._client.system.df())
+        df = await loop.run_in_executor(None, lambda: self._client.api.df())
         
         return {
             "Containers": {
-                "count": df.get("Containers", {}).get("Total", 0),
-                "size": df.get("Containers", {}).get("Size", "0B"),
+                "count": len(df.get("Containers", []) or []),
             },
             "Images": {
-                "count": df.get("Images", {}).get("Total", 0),
-                "size": df.get("Images", {}).get("Size", "0B"),
+                "count": len(df.get("Images", []) or []),
             },
             "Volumes": {
-                "count": df.get("Volumes", {}).get("Total", 0),
-                "size": df.get("Volumes", {}).get("Size", "0B"),
+                "count": len(df.get("Volumes", []) or []),
             },
         }
 

@@ -66,6 +66,64 @@ A **skill** is a reusable capability combining:
 | `get_summary` | Status summary |
 | `system_health_check` | Health check all plugins |
 
+## New Skills (v1.1)
+
+### Redis Cache (5 tools)
+
+| Tool | Description |
+|------|-------------|
+| `redis_ping` | Availability check (PING) |
+| `redis_info` | INFO sections: memory, clients, stats, replication |
+| `redis_clients` | Client connections (CLIENT LIST) |
+| `redis_slowlog` | Slow log (SLOWLOG GET) |
+| `redis_memory` | Memory: used, peak, fragmentation, evictions |
+
+### Systemd Services (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `service_status` | Unit status (systemctl status/is-active) |
+| `failed_units` | Failed units list |
+| `service_logs` | Service logs via journalctl -u |
+| `boot_analysis` | Boot time analysis (systemd-analyze blame) |
+
+### Netdiag (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `http_check` | HTTP(S) check: status, timings, redirects |
+| `tls_check` | TLS certificate: expiry, chain, issuer |
+| `dns_resolve` | DNS resolution A/AAAA |
+| `tcp_connect` | TCP connect with timing |
+
+### Kubernetes (6 tools)
+
+| Tool | Description |
+|------|-------------|
+| `k8s_pods` | Pods with phases and restarts |
+| `k8s_events` | Cluster/namespace events |
+| `k8s_logs` | Pod logs (kubectl logs) |
+| `k8s_describe` | Pod describe (conditions) |
+| `k8s_top` | Pod resources (kubectl top) |
+| `k8s_deployments` | Deployment status |
+
+### Prometheus Metrics (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `prom_query` | Instant PromQL query |
+| `prom_range` | Range query over period |
+| `prom_alerts` | Firing/pending alerts |
+| `prom_targets` | Scrape targets up/down |
+
+### Loki Logs (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `log_search` | LogQL search over period |
+| `log_labels` | Label names/values |
+| `log_tail` | Recent lines by selector |
+
 ## Common Workflows
 
 ### Performance Issue
@@ -88,6 +146,31 @@ docker_containers → docker_logs → docker_events
 pg_slow_queries → pg_activity → pg_locks
 ```
 
+### Cache Issues
+```
+redis_memory → redis_slowlog → redis_clients → pg_slow_queries
+```
+
+### Website Down
+```
+http_check → tls_check → nginx_logs → docker_containers
+```
+
+### K8s Pod CrashLoop
+```
+k8s_pods → k8s_events → k8s_logs → k8s_describe
+```
+
+### Alerts Firing
+```
+prom_alerts → prom_targets → prom_query → linux_host_stats
+```
+
+### Log Investigation
+```
+log_labels → log_search → log_tail → docker_logs
+```
+
 ## Correlation Engine
 
 | Correlation | Trigger |
@@ -95,6 +178,9 @@ pg_slow_queries → pg_activity → pg_locks
 | Docker + Nginx | Docker down, Nginx critical |
 | Linux + Docker | Linux critical, Docker degraded |
 | PG + Docker | PG degraded, Docker healthy |
+| Redis + PG | Redis evictions, PG degraded (cache-miss cascade) |
+| Linux + K8s | K8s CrashLoop/OOMKilled, host memory pressure |
+| Netdiag + Nginx | TLS cert issue, Nginx failing |
 
 ## Creating Custom Skills
 

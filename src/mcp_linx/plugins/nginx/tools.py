@@ -145,6 +145,7 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     access_log = plugin._config.get("access_log", "access.log") if plugin._config else "access.log"
     error_log = plugin._config.get("error_log", "error.log") if plugin._config else "error.log"
     
+                
     if log_type == "error":
         log_file = f"{config_path}/{error_log}"
     elif log_type == "access":
@@ -154,7 +155,7 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     elif log_type == "access_full":
         log_file = f"{config_path}/{access_log}"
     else:
-        log_file = f"{config_path}/{log_type}"
+        return ToolResult.error(f"Invalid log_type '{log_type}'. Allowed: error, access, error_full, access_full")
     
     command = f"tail -n {lines} {log_file}"
     result = await plugin._run_command(command)

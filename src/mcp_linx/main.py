@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mcp_linx.harness import (
     DefaultAgentLoop,
+    StreamingAgentLoop,
     discover_plugins,
     PluginManager,
 )
@@ -38,7 +40,7 @@ settings = Settings()
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=[logging.StreamHandler(sys.stderr)],
 )
 
 logger = logging.getLogger("mcp_linx")
@@ -58,6 +60,7 @@ def get_agent_loop(loop_type: str):
     """Получить агентный цикл по типу."""
     loops = {
         "default": DefaultAgentLoop,
+        "streaming": StreamingAgentLoop,
     }
 
     loop_class = loops.get(loop_type, DefaultAgentLoop)
@@ -107,6 +110,20 @@ async def start_server():
 
 async def main():
     """Точка входа для запуска сервера."""
+    plugin_manager_ref = {}
+
+    async def shutdown_handler():
+        if plugin_manager_ref.get("manager"):
+            await plugin_manager_ref["manager"].destroy_all()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_handler()))
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler
+            pass
+
     await start_server()
 
 
