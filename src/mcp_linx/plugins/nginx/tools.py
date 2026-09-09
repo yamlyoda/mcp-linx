@@ -97,10 +97,76 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
     return ToolResult.ok(results)
 
 
-"""Инструменты Nginx плагина - Часть 1: status, logs"""
+async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
+    """HTTP-проверка stub_status: active connections, requests, reading/writing/waiting
 
-from mcp_linx.types import ToolResult
+    Требует настройки stub_status_url в конфиге плагина.
+    """
+    import httpx
 
+    stub_url = plugin._config.get("stub_status_url") if plugin._config else None
+    if not stub_url:
+        return ToolResult.error(
+            "stub_status_url is not configured. Add it to config/settings.yaml "
+            "(plugins.nginx.stub_status_url, e.g. http://127.0.0.1/nginx_status)"
+        )
+
+    timeout = max(2, min(int(params.get("timeout", 5)), 30))
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(str(stub_url))
+    except Exception as e:
+        return ToolResult.error(f"stub_status request failed: {e}")
+
+    if resp.status_code != 200:
+        return ToolResult.error(f"stub_status returned HTTP {resp.status_code}")
+
+    text = resp.text
+    data: dict[str, Any] = {"url": str(stub_url), "raw": text}
+    issues: list[str] = []
+
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("Active connections"):
+            try:
+                data["active_connections"] = int(line.split(":", 1)[1].strip())
+            except (ValueError, IndexError):
+                pass
+        elif line.startswith("Reading"):
+            # Формат: "Reading: 0 Writing: 1 Waiting: 4"
+            for key in ("reading", "writing", "waiting"):
+                try:
+                    idx = line.lower().index(key) + len(key) + 1
+                    num = ""
+                    for ch in line[idx:]:
+                        if ch.isdigit():
+                            num += ch
+                        else:
+                            break
+                    if num:
+                        data[key] = int(num)
+                except (ValueError, IndexError):
+                    pass
+        else:
+            # Формат строки счётчиков: " 1234 1234 5678" (accepts handled requests)
+            parts = line.split()
+            if len(parts) == 3 and all(p.isdigit() for p in parts):
+                data["accepted"], data["handled"], data["requests"] = (
+                    int(parts[0]), int(parts[1]), int(parts[2]),
+                )
+
+    if isinstance(data.get("active_connections"), int):
+        if data["active_connections"] > 5000:
+            issues.append(
+                f"High connection count: {data['active_connections']} — "
+                "check worker_connections limit"
+            )
+        if isinstance(data.get("reading"), int) and data["reading"] > 100:
+            issues.append(f"High reading count: {data['reading']} — slow clients or upstream")
+
+    if issues:
+        return ToolResult.degraded(data, issues)
+    return ToolResult.ok(data)
 
 
 

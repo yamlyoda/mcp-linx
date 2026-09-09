@@ -167,6 +167,51 @@ class ContextAggregator:
                         evidence="OOM killer detected on host — may have killed critical processes",
                     )
                 )
+
+        # Корреляция: Disk full + Docker (image/container disk usage)
+        if linux_state and docker_state:
+            linux_issues = " ".join(linux_state.issues or []).lower()
+            if ("disk" in linux_issues or "no space" in linux_issues) and docker_state.status in [
+                Status.DEGRADED, Status.CRITICAL,
+            ]:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="linux",
+                        related=["docker"],
+                        evidence="Host disk pressure while Docker is degraded — check docker_system_df, images and volumes may have filled the disk",
+                    )
+                )
+
+        # Корреляция: Memory pressure + PostgreSQL (shared buffers / work_mem)
+        if linux_state and postgres_state:
+            linux_issues = " ".join(linux_state.issues or []).lower()
+            if ("memory" in linux_issues or "swap" in linux_issues) and postgres_state.status in [
+                Status.DEGRADED, Status.CRITICAL,
+            ]:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="linux",
+                        related=["postgres"],
+                        evidence="Host memory pressure while PostgreSQL is degraded — check work_mem, shared_buffers and pg_activity for memory-heavy queries",
+                    )
+                )
+
+        # Корреляция: Nginx + PostgreSQL (upstream failures due to slow DB)
+        if nginx_state and postgres_state:
+            if nginx_state.status in [Status.DEGRADED, Status.CRITICAL] and postgres_state.status in [
+                Status.DEGRADED, Status.CRITICAL,
+            ]:
+                correlations.append(
+                    Correlation(
+                        type="cascade",
+                        source="postgres",
+                        related=["nginx"],
+                        evidence="PostgreSQL degraded while Nginx reports upstream failures/timeouts — slow DB queries likely cause 502/504 at the proxy",
+                    )
+                )
+
         
         return correlations
     

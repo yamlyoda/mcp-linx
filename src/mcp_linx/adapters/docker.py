@@ -53,6 +53,7 @@ class DockerAdapter(BaseAdapter):
         self,
         all_: bool = True,
         filters: dict[str, Any] | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """Список контейнеров"""
         if not self._client:
@@ -65,7 +66,7 @@ class DockerAdapter(BaseAdapter):
             lambda: self._client.containers.list(all=all_, filters=self._normalize_filters(filters)),
         )
         
-        return [
+        result = [
             {
                 "id": c.id,
                 "short_id": c.short_id,
@@ -81,6 +82,9 @@ class DockerAdapter(BaseAdapter):
             }
             for c in containers
         ]
+        if limit is not None and limit > 0:
+            result = result[:limit]
+        return result
 
     @staticmethod
     def _format_ports(ports: Any) -> list[dict[str, Any]]:

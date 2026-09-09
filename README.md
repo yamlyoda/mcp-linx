@@ -78,10 +78,22 @@ plugins:
     - prometheus
     - loki
 
+  postgres:
+    host: "localhost"
+    port: 5432
+    password: ""          # from env: POSTGRES_PASSWORD
+    # SSL/TLS modes: disable | allow | prefer | require | verify-ca | verify-full
+    # verify-full is recommended for production (verifies CA + hostname)
+    ssl_mode: "prefer"
+
   redis:
     host: "localhost"
     port: 6379
     password: ""          # from env: REDIS_PASSWORD
+
+  nginx:
+    log_path: "/var/log/nginx"
+    stub_status_url: null # e.g. "http://127.0.0.1/nginx_status" — enables nginx_stub_status tool
 
   kubernetes:
     namespace: "default"

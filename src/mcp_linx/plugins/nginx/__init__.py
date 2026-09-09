@@ -30,6 +30,7 @@ class NginxPlugin(DiagnosticPlugin):
             nginx_logs,
             nginx_config,
             nginx_upstream,
+            nginx_stub_status,
         )
 
         return [
@@ -37,6 +38,7 @@ class NginxPlugin(DiagnosticPlugin):
             PluginTool("nginx_logs", "Чтение error и access логов Nginx", nginx_logs),
             PluginTool("nginx_config", "Проверка конфигурации Nginx", nginx_config),
             PluginTool("nginx_upstream", "Статус upstream серверов", nginx_upstream),
+            PluginTool("nginx_stub_status", "HTTP-проверка stub_status: active connections, requests, reading/writing/waiting", nginx_stub_status),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:

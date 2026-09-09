@@ -39,7 +39,7 @@ class DockerPlugin(DiagnosticPlugin):
             PluginTool("docker_info", "Полная информация о контейнере или системе", docker_info),
             PluginTool("docker_events", "Docker события (контейнеры, образы, сети)", docker_events),
             PluginTool("docker_system_df", "Использование диска Docker", docker_system),
-            PluginTool("docker_prune", "Удалить остановленные контейнеры и освободить место", docker_prune),
+            PluginTool("docker_prune", "Dry-run: список остановленных контейнеров для удаления. Реальное удаление — execute=true, confirm=true", docker_prune),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
