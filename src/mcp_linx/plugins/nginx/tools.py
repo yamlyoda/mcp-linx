@@ -1,5 +1,4 @@
-
-"""Инструменты Nginx плагина - Часть 2: config, upstream"""
+"""Инструменты Nginx плагина"""
 
 from __future__ import annotations
 
@@ -35,6 +34,8 @@ async def nginx_config(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResul
     results["worker_settings"] = worker_result.get("stdout", "Not found")
     
     return ToolResult.ok(results)
+
+
 
 
 async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -98,12 +99,9 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
 
 """Инструменты Nginx плагина - Часть 1: status, logs"""
 
-from __future__ import annotations
-
-from typing import Any
-
-from mcp_linx.plugins.nginx import NginxPlugin
 from mcp_linx.types import ToolResult
+
+
 
 
 async def nginx_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -134,6 +132,8 @@ async def nginx_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResul
     results["worker_config"] = worker_result.get("stdout", "Not found")
     
     return ToolResult.ok(results)
+
+
 
 
 async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -197,3 +197,4 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
                 "status_5xx": status_5xx,
             },
         })
+

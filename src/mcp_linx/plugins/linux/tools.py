@@ -1,5 +1,4 @@
-
-"""Инструменты Linux плагина - Часть 2: logs, network, disk, memory, execute"""
+"""Инструменты Linux плагина"""
 
 from __future__ import annotations
 
@@ -51,6 +50,8 @@ async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     })
 
 
+
+
 async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Сетевые интерфейсы, порты, соединения"""
     results: dict[str, Any] = {}
@@ -71,6 +72,8 @@ async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResu
     results["dns"] = dns_result.get("stdout", "")
     
     return ToolResult.ok(results)
+
+
 
 
 async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -96,6 +99,8 @@ async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     return ToolResult.ok(results)
 
 
+
+
 async def linux_memory(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Детальная информация об использовании памяти"""
     results: dict[str, Any] = {}
@@ -119,6 +124,8 @@ async def linux_memory(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResul
     return ToolResult.ok(results)
 
 
+
+
 async def linux_execute_command(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Выполнение произвольной read-only команды"""
     command = params.get("command", "")
@@ -133,12 +140,9 @@ async def linux_execute_command(plugin: LinuxPlugin, params: dict[str, Any]) -> 
 
 """Инструменты Linux плагина - Часть 1: host_stats и processes"""
 
-from __future__ import annotations
-
-from typing import Any
-
-from mcp_linx.plugins.linux import LinuxPlugin
 from mcp_linx.types import ToolResult
+
+
 
 
 async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -171,6 +175,8 @@ async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolR
         "cpu_count": results.get("cpu_count", ""),
         "cpu_model": results.get("cpu_model", ""),
     })
+
+
 
 
 async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -216,3 +222,4 @@ async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRe
         "processes": processes,
         "count": len(processes),
     })
+
