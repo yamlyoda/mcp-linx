@@ -52,11 +52,14 @@ class NginxPlugin(DiagnosticPlugin):
         else:
             self._adapter = LocalAdapter({})
 
+        sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
+
         self._security = SecurityGuard({
-            "readonly": True,
-            "max_command_output_size": int(config.get("max_command_output_size", 10000)),
-            "max_log_lines": int(config.get("max_log_lines", 500)),
-            "command_timeout_seconds": int(config.get("command_timeout_seconds", 30)),
+            "readonly": bool(sec.get("readonly", True)),
+            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 10000))),
+            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 500))),
+            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 30))),
+            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
         })
 
         await self._adapter.connect()

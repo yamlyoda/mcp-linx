@@ -9,6 +9,24 @@ from mcp_linx.plugins.linux import LinuxPlugin
 from mcp_linx.types import ToolResult
 
 
+# Ограниченный список разрешённых log_type для /var/log/ (защита от path traversal)
+_ALLOWED_LOG_FILES = {
+    "dpkg.log",
+    "syslog",
+    "messages",
+    "kern.log",
+    "auth.log",
+    "user.log",
+    "boot.log",
+    "cron.log",
+    "faillog",
+    "wtmp",
+    "btmp",
+    "dmesg",
+    "lastlog",
+}
+
+
 async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Чтение системных логов"""
     log_type = params.get("log_type", "syslog")
@@ -26,9 +44,14 @@ async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
         command = f"tail -n {lines} /var/log/kern.log"
     elif log_type == "syslog" or log_type == "messages":
         command = f"tail -n {lines} /var/log/syslog"
+    elif log_type in _ALLOWED_LOG_FILES:
+        # Только из белого списка — нельзя выйти за пределы /var/log/
+        command = f"tail -n {lines} /var/log/{log_type}"
     else:
-        safe_log_type = shlex.quote(log_type)
-        command = f"tail -n {lines} /var/log/{safe_log_type}"
+        return ToolResult.error(
+            f"Invalid log_type '{log_type}'. Allowed: journal, auth, kern, syslog, messages, "
+            f"{', '.join(sorted(_ALLOWED_LOG_FILES))}"
+        )
 
     result = await plugin._run_command(command)
 

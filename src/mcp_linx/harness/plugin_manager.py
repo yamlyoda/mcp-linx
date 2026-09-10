@@ -128,9 +128,18 @@ class PluginManager:
 
         enabled_plugins = self.get_enabled_plugins()
 
+        # Глобальная security-секция из settings.yaml (если есть)
+        global_security = self._config.get("security", {})
+        if not isinstance(global_security, dict):
+            global_security = {}
+
         for plugin in enabled_plugins:
             try:
-                plugin_config_dict = self._config.get("plugins", {}).get(plugin.id, {})
+                plugin_config_dict = dict(self._config.get("plugins", {}).get(plugin.id, {}))
+                # Пробрасываем глобальные security-настройки под ключ "security",
+                # если плагин не задал свои
+                if global_security:
+                    plugin_config_dict.setdefault("security", dict(global_security))
                 await plugin.initialize(PluginConfig(plugin_config_dict))
                 logger.info(f"Plugin initialized: {plugin.id}")
             except Exception as e:

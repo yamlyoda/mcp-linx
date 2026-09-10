@@ -27,7 +27,28 @@ class SSHAdapter(BaseAdapter):
         loop = asyncio.get_event_loop()
         
         self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Host key policy из конфига (дефолт: reject — защита от MITM).
+        # Допустимые значения: reject | warning | auto_add
+        policy = str(self.config.get("host_key_policy", "reject")).lower()
+        if policy == "auto_add":
+            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        elif policy == "warning":
+            self._client.set_missing_host_key_policy(paramiko.WarningPolicy())
+        else:
+            self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        
+        # Загрузка known_hosts для проверки ключей хоста
+        try:
+            known_hosts = self.config.get("known_hosts")
+            if known_hosts:
+                self._client.load_host_keys(str(known_hosts))
+            else:
+                self._client.load_system_host_keys()
+        except Exception:
+            # Отсутствие known_hosts не блокирует подключение,
+            # но RejectPolicy отклонит неизвестный хост.
+            pass
         
         await loop.run_in_executor(
             None,

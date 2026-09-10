@@ -84,10 +84,10 @@ tables = await plugin._execute_query(query, (schema,))
 
 ## Medium Issues
 
-### 4. Command Injection via `log_type` in `linux_logs` (MEDIUM)
-**Location**: `src/mcp_linx/plugins/linux/tools.py:30`
+### 4. Command Injection via `log_type` in `linux_logs` (MEDIUM) — ✅ FIXED
+**Location**: `src/mcp_linx/plugins/linux/tools.py` (was line 30)
 
-**Problem**: User input `log_type` is used to construct file path:
+**Problem**: User input `log_type` was used to construct file path:
 ```python
 command = f"tail -n {lines} /var/log/{log_type}"
 ```
@@ -96,6 +96,11 @@ command = f"tail -n {lines} /var/log/{log_type}"
 ```json
 {"log_type": "syslog; cat /etc/shadow"}
 ```
+
+**Fix applied**: `log_type` validated against `_ALLOWED_LOG_FILES` allowlist
+(`dpkg.log, syslog, messages, kern.log, auth.log, user.log, boot.log, cron.log,
+faillog, wtmp, btmp, dmesg, lastlog`) + predefined aliases (`journal`, `auth`,
+`kern`, `syslog`, `messages`). Unknown values return `ToolResult.error`:
 
 **Fix**: Validate `log_type` against an allowlist:
 ```python
@@ -200,7 +205,7 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 | `src/mcp_linx/plugin_manager.py` | ✅ Clean | No issues |
 | `src/mcp_linx/types.py` | ✅ Clean | No issues |
 | `src/mcp_linx/adapters/base.py` | ✅ Clean | Safe subprocess usage |
-| `src/mcp_linx/adapters/ssh.py` | ✅ Clean | No hardcoded credentials |
+| `src/mcp_linx/adapters/ssh.py` | ✅ Clean | Host key policy RejectPolicy by default (config: reject|warning|auto_add), known_hosts supported |
 | `src/mcp_linx/adapters/docker.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/linux/__init__.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/linux/tools.py` | ✅ Fixed | Command injection fixed with shlex.quote() |

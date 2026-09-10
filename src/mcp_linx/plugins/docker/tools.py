@@ -164,7 +164,7 @@ async def docker_prune(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResu
     try:
         if not execute:
             # Dry-run: список контейнеров-кандидатов без удаления
-            containers = await plugin._adapter.list_containers(
+            containers = await plugin.list_containers(
                 all_=True, filters=filters, limit=100
             )
             candidates = [c for c in containers if c.get("status") != "running"]
@@ -179,7 +179,7 @@ async def docker_prune(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResu
                 "hint": "Это dry-run. Для реального удаления передайте execute=true и confirm=true",
             })
 
-        result = await plugin._adapter.prune_containers(filters=filters)
+        result = await plugin.prune_containers(filters=filters)
         return ToolResult.ok({"mode": "executed", **result})
     except Exception as e:
         return ToolResult.error(f"Failed to prune containers: {e}")

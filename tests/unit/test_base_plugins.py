@@ -40,6 +40,39 @@ class TestLinuxTools:
         assert result.status == Status.HEALTHY
         assert "Error: boom" in result.data["kernel"]
 
+    @pytest.mark.asyncio
+    async def test_linux_logs_blocks_path_traversal(self):
+        """log_type вне allowlist не должен конструировать команду с произвольным путём"""
+        from mcp_linx.plugins.linux import LinuxPlugin
+        from mcp_linx.plugins.linux.tools import linux_logs
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(LinuxPlugin, {
+            "_run_command": {"stdout": "", "stderr": "", "returncode": 0},
+        })
+        for bad in ("../../etc/shadow", "syslog; cat /etc/passwd", "a/b"):
+            result = await linux_logs(plugin, {"log_type": bad})
+            assert result.status == Status.ERROR, f"log_type={bad} должен быть заблокирован"
+        plugin._run_command.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_linux_logs_allowlisted_type_runs(self):
+        """Разрешённый log_type выполняется, команда строится только из allowlist"""
+        from mcp_linx.plugins.linux import LinuxPlugin
+        from mcp_linx.plugins.linux.tools import linux_logs
+        from mcp_linx.types import Status
+
+        captured = {}
+        plugin = MagicMock(spec=LinuxPlugin)
+        async def fake_run(command, timeout=30):
+            captured["command"] = command
+            return {"stdout": "line1\n", "stderr": "", "returncode": 0}
+        plugin._run_command = fake_run
+
+        result = await linux_logs(plugin, {"log_type": "dpkg.log", "lines": 10})
+        assert result.status == Status.HEALTHY
+        assert captured["command"] == "tail -n 10 /var/log/dpkg.log"
+
 
 class TestNginxStubStatus:
     @pytest.mark.asyncio

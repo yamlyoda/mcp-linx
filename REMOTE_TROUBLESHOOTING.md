@@ -73,15 +73,23 @@ Tool call → Plugin.initialize() → SSH connect → Execute → Disconnect
 
 ---
 
-### 4. SSH Host Key Verification (SECURITY)
+### 4. SSH Host Key Verification (SECURITY) — ✅ FIXED
 **Problem**: `AutoAddPolicy()` accepts any host key — vulnerable to MITM attacks.
 
-**Current**:
+**Fixed**: Policy is now config-driven with **RejectPolicy by default**:
 ```python
-self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+policy = str(self.config.get("host_key_policy", "reject")).lower()
+if policy == "auto_add":
+    self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+elif policy == "warning":
+    self._client.set_missing_host_key_policy(paramiko.WarningPolicy())
+else:
+    self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
 ```
 
-**Solution**: Use `RejectPolicy` by default, with optional known_hosts file.
+Config options per SSH adapter (`config/settings.yaml`):
+- `host_key_policy`: `reject` (default) | `warning` | `auto_add`
+- `known_hosts`: path to known_hosts file (default: system `~/.ssh/known_hosts`)
 
 ---
 

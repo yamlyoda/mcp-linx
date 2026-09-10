@@ -132,21 +132,13 @@ async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> Tool
                 data["active_connections"] = int(line.split(":", 1)[1].strip())
             except (ValueError, IndexError):
                 pass
-        elif line.startswith("Reading"):
+        elif line.lower().startswith("reading"):
             # Формат: "Reading: 0 Writing: 1 Waiting: 4"
+            import re as _re
             for key in ("reading", "writing", "waiting"):
-                try:
-                    idx = line.lower().index(key) + len(key) + 1
-                    num = ""
-                    for ch in line[idx:]:
-                        if ch.isdigit():
-                            num += ch
-                        else:
-                            break
-                    if num:
-                        data[key] = int(num)
-                except (ValueError, IndexError):
-                    pass
+                m = _re.search(rf"{key}:\s*(\d+)", line, _re.IGNORECASE)
+                if m:
+                    data[key] = int(m.group(1))
         else:
             # Формат строки счётчиков: " 1234 1234 5678" (accepts handled requests)
             parts = line.split()

@@ -42,6 +42,8 @@ plugins:
       username: null      # null = текущий пользователь
       key_file: null      # null = default keys
       password: null      # не рекомендуется
+      host_key_policy: "reject"  # reject | warning | auto_add (защита от MITM)
+      known_hosts: null   # путь к known_hosts (null = системный ~/.ssh/known_hosts)
   
   nginx:
     enabled: true

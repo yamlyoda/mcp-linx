@@ -60,3 +60,20 @@ class DockerPlugin(DiagnosticPlugin):
     async def destroy(self) -> None:
         if self._adapter:
             await self._adapter.disconnect()
+
+    async def list_containers(
+        self,
+        all_: bool = True,
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Список контейнеров (делегирует адаптеру)."""
+        if not self._adapter:
+            raise RuntimeError("Plugin not initialized")
+        return await self._adapter.list_containers(all_=all_, filters=filters, limit=limit)
+
+    async def prune_containers(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Prune-кандидаты (dry-run). Реальное удаление требует confirm в docker_prune tool."""
+        if not self._adapter:
+            raise RuntimeError("Plugin not initialized")
+        return await self._adapter.prune_containers(filters=filters)
