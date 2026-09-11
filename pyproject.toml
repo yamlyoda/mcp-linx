@@ -69,6 +69,9 @@ disallow_incomplete_defs = true
 testpaths = ["tests"]
 addopts = "--asyncio-mode=auto --tb=short"
 asyncio_mode = "auto"
+markers = [
+    "integration: интеграционные тесты, требующие Docker (docker compose)",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

@@ -6,12 +6,16 @@
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any
 
 from fastmcp import FastMCP
 
+from mcp_linx.audit import AuditLogger
 from mcp_linx.harness.plugin_manager import PluginManager
+from mcp_linx.ratelimit import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +55,23 @@ class DefaultAgentLoop(AgentLoop):
 
     def __init__(self):
         self._context_aggregator = None
+        self._audit_logger: AuditLogger | None = None
+        self._rate_limiter: RateLimiter | None = None
+        self._config: dict[str, Any] | None = None
 
     async def setup(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
         """Настройка MCP сервера."""
         from mcp_linx.context_aggregator import ContextAggregator
 
+        self._config = config
         self._context_aggregator = ContextAggregator()
+
+        # Audit logger + rate limiter из конфига
+        self._audit_logger = AuditLogger.from_config(config)
+        security_cfg = config.get("security", {}) if isinstance(config, dict) else {}
+        self._rate_limiter = RateLimiter.from_config(
+            security_cfg if isinstance(security_cfg, dict) else {}
+        )
 
         # Инициализация плагинов
         await plugin_manager.initialize_all()
@@ -66,6 +81,9 @@ class DefaultAgentLoop(AgentLoop):
 
         # Регистрация системных инструментов
         self._register_system_tools(mcp, plugin_manager)
+
+        # Автосбор ComponentState из health check при старте
+        await self._seed_context_from_health(plugin_manager)
 
         logger.info("MCP server setup complete")
 
@@ -99,12 +117,53 @@ class DefaultAgentLoop(AgentLoop):
 
         logger.info(f"Registered {len(tools)} tools")
 
+    async def _seed_context_from_health(self, plugin_manager: PluginManager) -> None:
+        """Заполнить агрегатор состояниями из health check (UNKNOWN при ошибке)."""
+        from mcp_linx.types import ComponentState, Status
+
+        try:
+            results = await plugin_manager.health_check_all()
+        except Exception as e:
+            logger.error(f"Health check seeding failed: {e}")
+            return
+
+        for plugin_id, health in results.items():
+            self._context_aggregator.add_component(
+                ComponentState(
+                    plugin_id=plugin_id,
+                    status=health.status,
+                    last_checked=datetime.now(timezone.utc).isoformat(),
+                    issues=(
+                        [health.message]
+                        if health.status not in (Status.HEALTHY, Status.UNKNOWN)
+                        else None
+                    ),
+                )
+            )
+
     def _make_handler(self, plugin, tool_name: str, execute_func):
         """Создание обработчика инструмента."""
         context_aggregator = self._context_aggregator
+        audit_logger = self._audit_logger
+        rate_limiter = self._rate_limiter
 
         async def handler(params: dict[str, Any] | None = None) -> dict[str, Any]:
             params = params or {}
+            rate_key = f"{plugin.id}:{tool_name}"
+
+            # Rate limiting
+            if rate_limiter is not None:
+                try:
+                    rate_limiter.enforce(rate_key)
+                except Exception as e:
+                    return {
+                        "status": "error",
+                        "error_message": str(e),
+                        "metadata": {"plugin": plugin.id, "tool": tool_name},
+                    }
+
+            start = time.monotonic()
+            error: str | None = None
 
             try:
                 result = await execute_func(plugin, params)
@@ -118,24 +177,35 @@ class DefaultAgentLoop(AgentLoop):
                 # Обновляем контекст
                 if hasattr(result, "status") and plugin:
                     from mcp_linx.types import ComponentState, Status
-                    import asyncio
 
                     component_state = ComponentState(
                         plugin_id=plugin.id,
                         status=result.status if hasattr(result, "status") else Status.UNKNOWN,
-                        last_checked=str(asyncio.get_event_loop().time()),
+                        last_checked=datetime.now(timezone.utc).isoformat(),
                         issues=result.suggestions if hasattr(result, "suggestions") else [],
                     )
                     context_aggregator.add_component(component_state)
 
+                status = result_dict.get("status", "unknown")
                 return result_dict
             except Exception as e:
+                error = str(e)
                 logger.error(f"Tool {tool_name} failed: {e}")
                 return {
                     "status": "error",
-                    "error_message": str(e),
+                    "error_message": error,
                     "metadata": {"plugin": plugin.id, "tool": tool_name},
                 }
+            finally:
+                if audit_logger is not None:
+                    audit_logger.log_call(
+                        tool_name=tool_name,
+                        plugin_id=plugin.id,
+                        params=params,
+                        status=status if "status" in locals() else "error",
+                        duration_ms=(time.monotonic() - start) * 1000,
+                        error=error,
+                    )
 
         return handler
 
@@ -176,7 +246,25 @@ class DefaultAgentLoop(AgentLoop):
 
         @mcp.tool(name="system_health_check", description="Провести health check всех плагинов")
         async def system_health_check() -> dict[str, Any]:
+            from mcp_linx.types import ComponentState, Status
+
             results = await plugin_manager.health_check_all()
+
+            # Обновляем агрегатор актуальными состояниями
+            for plugin_id, health in results.items():
+                context_aggregator.add_component(
+                    ComponentState(
+                        plugin_id=plugin_id,
+                        status=health.status,
+                        last_checked=datetime.now(timezone.utc).isoformat(),
+                        issues=(
+                            [health.message]
+                            if health.status not in (Status.HEALTHY, Status.UNKNOWN)
+                            else None
+                        ),
+                    )
+                )
+
             return {
                 "status": "healthy" if all(r.status.value == "healthy" for r in results.values()) else "degraded",
                 "results": {

@@ -203,7 +203,35 @@ The ContextAggregator uses synchronous dict operations. This is fine for now but
 
 ---
 
-## v1.1 — New Plugins (DONE 2026-09-09)
+## Phase 1 — Stability & Production (DONE 2026-09-10)
+
+### Implemented
+- **Audit logging** — `src/mcp_linx/audit.py`: `AuditLogger`, `sanitize_params()` (redacts password/token/secret/api_key), JSON-lines в файл/лог. Встроен в `agent_loop._make_handler` (пишется каждый вызов: tool, plugin, status, duration_ms, params без секретов).
+- **Rate limiting** — `src/mcp_linx/ratelimit.py`: `RateLimiter` скользящее окно на инструмент. Настраивается через `security.rate_limit_max_calls` / `security.rate_limit_window_seconds`. Встроен в `agent_loop._make_handler` (ключ `plugin:tool`).
+- **ContextAggregator авто-наполнение** — `_seed_context_from_health()` при старте + `system_health_check` обновляет агрегатор актуальными состояниями. `last_checked` теперь ISO-метка UTC (не `loop.time()`).
+- **Integration tests** — `tests/integration/` + `tests/docker-compose.test.yml` (postgres:16, nginx:1.27, redis:7) + `tests/nginx-test.conf` (stub_status). Фикстура поднимает стек и ждёт готовности, скип при отсутствии Docker.
+- **Bug fix**: `pg_stats` использовал несуществующую `pg_relation_size()` → `pg_total_relation_size(...::regclass)`, убрана битая колонка size для индексов.
+- **Bug fix**: `docker_stack` fixture — путь к compose-файлу через `parent.parent` (был `parent` → no such file).
+- pyproject: маркер `integration`.
+
+### Tests
+- `tests/unit/test_audit_ratelimit.py`: 10 unit-тестов (sanitize, audit logger, rate limiter).
+- `tests/integration/test_integration.py`: 7 integration-тестов (pg_connections/pg_stats/pg_tables, nginx stub_status/root, redis ping/info). Redis-тесты скипаются если `redis-cli` недоступен.
+- **Total: 68 passed, 2 skipped.**
+
+### Usage
+```bash
+# unit + integration (integration поднимет compose, ждёт Docker)
+.venv/bin/python -m pytest tests/ -q
+
+# только unit (без Docker)
+.venv/bin/python -m pytest tests/unit/ -q
+
+# только integration
+.venv/bin/python -m pytest tests/integration/ -q
+```
+
+---
 
 All variants implemented: redis, systemd, netdiag, kubernetes, prometheus, loki.
 

@@ -213,6 +213,63 @@ class ContextAggregator:
                 )
 
         
+        # Корреляция: OOM → container restart → Nginx 5xx (тройная цепочка)
+        if linux_state and docker_state and nginx_state:
+            linux_issues = " ".join(linux_state.issues or []).lower()
+            docker_issues = " ".join(docker_state.issues or []).lower()
+            nginx_bad = nginx_state.status in [Status.DEGRADED, Status.CRITICAL]
+            if ("oom" in linux_issues or "killed" in linux_issues) and (
+                "restart" in docker_issues or "exit" in docker_issues or "crash" in docker_issues
+            ) and nginx_bad:
+                correlations.append(
+                    Correlation(
+                        type="cascade",
+                        source="linux",
+                        related=["docker", "nginx"],
+                        evidence="OOM killer → container restart → Nginx 5xx: host memory pressure likely killed the container, check maxmemory/limits",
+                    )
+                )
+
+        # Корреляция: PostgreSQL idle-in-transaction (locks/connections)
+        if postgres_state:
+            pg_issues = " ".join(postgres_state.issues or []).lower()
+            if any(kw in pg_issues for kw in ["idle", "lock", "blocked", "long-running"]):
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="postgres",
+                        related=["postgres"],
+                        evidence="PostgreSQL reports idle-in-transaction/locks — check pg_activity for 'idle in transaction' sessions and pg_locks for blockers",
+                    )
+                )
+
+        # Корреляция: PostgreSQL replication lag → slow reads
+        if postgres_state and nginx_state:
+            pg_issues = " ".join(postgres_state.issues or []).lower()
+            if "replicat" in pg_issues and ("lag" in pg_issues or "delay" in pg_issues) and \
+                    nginx_state.status in [Status.DEGRADED, Status.CRITICAL]:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="postgres",
+                        related=["nginx"],
+                        evidence="PostgreSQL replication lag detected while Nginx is degraded — read replicas may serve stale data or time out",
+                    )
+                )
+
+        # Корреляция: Linux no-space → docker_prune рекомендован
+        if linux_state and docker_state:
+            linux_issues = " ".join(linux_state.issues or []).lower()
+            if any(kw in linux_issues for kw in ["no space", "disk full", "disk is full"]):
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="linux",
+                        related=["docker"],
+                        evidence="Host reports no space left — recommend docker_system_df + docker_prune (dry-run) to reclaim space from images/volumes",
+                    )
+                )
+
         return correlations
     
     def _get_component_by_plugin(

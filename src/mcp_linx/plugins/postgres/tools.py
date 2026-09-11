@@ -30,7 +30,7 @@ async def pg_stats(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
                 schemaname, relname AS table_name,
                 n_live_tup, n_dead_tup, n_mod_since_analyze,
                 last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-                pg_size_pretty(pg_relation_size(schemaname || '.' || relname)) AS size
+                pg_size_pretty(pg_total_relation_size((schemaname || '.' || relname)::regclass)) AS size
             FROM pg_stat_user_tables
             ORDER BY n_live_tup DESC
             LIMIT 20;
@@ -40,8 +40,7 @@ async def pg_stats(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
         index_stats = await plugin._execute_query("""
             SELECT
                 schemaname, relname AS table_name, indexrelname AS index_name,
-                idx_scan, idx_tup_read, idx_tup_fetch,
-                pg_size_pretty(pg_relation_size(indexrelname)) AS size
+                idx_scan, idx_tup_read, idx_tup_fetch
             FROM pg_stat_user_indexes
             ORDER BY idx_scan DESC
             LIMIT 20;

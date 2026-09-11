@@ -7,6 +7,12 @@ from typing import Any
 from mcp_linx.plugins.nginx import NginxPlugin
 from mcp_linx.types import ToolResult
 
+# Разрешённые директории логов (защита от path traversal через конфиг)
+_ALLOWED_LOG_DIRS = {"/var/log/nginx", "/usr/local/nginx/logs", "/var/log"}
+
+# Разрешённые имена лог-файлов (basename без путей и "..")
+_ALLOWED_LOG_NAMES = {"access.log", "error.log"}
+
 
 async def nginx_config(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Проверка конфигурации Nginx"""
@@ -39,62 +45,94 @@ async def nginx_config(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResul
 
 
 async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
-    """Статус upstream серверов"""
+    """Статус upstream серверов: конфиг + реальный HTTP health check.
+
+    По умолчанию выполняет GET к каждому upstream-адресу (httpx, таймаут timeout).
+    Добавляет схему http://, если не указана. unix-сокеты пропускаются (недоступны по HTTP).
+    """
+    import httpx
+
+    timeout = max(1, min(int(params.get("timeout", 3)), 30))
+    max_servers = max(1, min(int(params.get("max_servers", 10)), 50))
+
     results: dict[str, Any] = {}
-    
-    # Поиск upstream блоков
+
+    # --- 1. Поиск upstream блоков в конфиге ---
     upstream_result = await plugin._run_command(
         "grep -A 10 'upstream' /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null | grep -v '^#' | head -100"
     )
     results["upstream_config"] = upstream_result.get("stdout", "No upstream configured")
-    
-    # stub_status если настроен
-    stub_url = plugin._config.get("stub_status_url") if plugin._config else None
-    if stub_url:
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(stub_url)
-                if resp.status_code == 200:
-                    results["stub_status"] = resp.text
-                    results["active_connections"] = next(
-                        (l for l in resp.text.split("\n") if "Active connections" in l), ""
-                    )
-                else:
-                    results["stub_status_error"] = f"HTTP {resp.status_code}"
-        except Exception as e:
-            results["stub_status_error"] = str(e)
-    
-    # Парсинг upstream серверов
-    upstream_servers = []
+
+    # --- 2. Парсинг адресов серверов ---
+    upstream_servers: list[str] = []
     for line in upstream_result.get("stdout", "").split("\n"):
-        if "server" in line and ":" in line:
-            parts = line.strip().split()
-            for part in parts:
-                if part.startswith("server") and ":" in part:
-                    server_addr = part.split(";")[0].replace("server", "").strip()
-                    if server_addr:
-                        upstream_servers.append(server_addr)
-    
-    results["upstream_servers"] = upstream_servers
-    
-    # Проверка доступности
-    live_servers = []
-    dead_servers = []
-    for server in upstream_servers[:10]:
-        check_result = await plugin._run_command(
-            f"curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout 2 {server}/ 2>/dev/null || echo 'unreachable'"
-        )
-        status = check_result.get("stdout", "").strip()
-        if status and status not in ("000", "unreachable"):
-            live_servers.append(server)
-        else:
-            dead_servers.append(server)
-    
-    results["live_servers"] = live_servers
-    results["dead_servers"] = dead_servers
-    
-    return ToolResult.ok(results)
+        line = line.strip()
+        # строка вида: "server 127.0.0.1:3000 weight=1;" или "server backend:8080;"
+        if not line.startswith("server"):
+            continue
+        tokens = line[len("server"):].split()
+        if not tokens:
+            continue
+        addr = tokens[0].rstrip(";,").strip()
+        if addr and addr not in upstream_servers:
+            upstream_servers.append(addr)
+
+    results["upstream_servers"] = upstream_servers[:max_servers]
+
+    # --- 3. Реальный HTTP health check ---
+    checks: list[dict[str, Any]] = []
+    live: list[str] = []
+    dead: list[str] = []
+
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        for server in upstream_servers[:max_servers]:
+            # unix:/path — недоступен по HTTP, только skip
+            if server.startswith("unix:"):
+                checks.append({
+                    "server": server,
+                    "type": "socket",
+                    "status": "skipped",
+                    "note": "unix-socket: HTTP health check not applicable",
+                })
+                continue
+
+            # нормализуем URL
+            url = server
+            if not url.startswith(("http://", "https://")):
+                host_part = url.split("/")[0]
+                url = f"http://{host_part}"
+
+            try:
+                resp = await client.get(url)
+                ok = resp.status_code < 500  # 4xx = жив, 5xx = жив но ошибается
+                entry: dict[str, Any] = {
+                    "server": server,
+                    "url": url,
+                    "status_code": resp.status_code,
+                    "alive": ok,
+                }
+                if ok:
+                    live.append(server)
+                else:
+                    dead.append(server)
+                    entry["note"] = f"HTTP {resp.status_code} (5xx)"
+            except Exception as e:
+                dead.append(server)
+                entry = {
+                    "server": server,
+                    "url": url,
+                    "alive": False,
+                    "error": str(e)[:200],
+                }
+            checks.append(entry)
+
+    results["checks"] = checks
+    results["live_servers"] = live
+    results["dead_servers"] = dead
+
+    status = "degraded" if dead else "ok"
+    return ToolResult.ok({**results, "status": status})
+
 
 
 async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
