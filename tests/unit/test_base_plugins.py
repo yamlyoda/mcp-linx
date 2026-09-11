@@ -86,3 +86,188 @@ class TestNginxStubStatus:
         result = await nginx_stub_status(plugin, {})
         assert result.status == Status.ERROR
         assert "stub_status_url" in result.error_message
+
+
+class TestNginxLogs:
+    @pytest.mark.asyncio
+    async def test_nginx_logs_blocks_malicious_log_path(self):
+        """config_path вне allowlist должен быть заблокирован"""
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_logs
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._config = {"log_path": "/etc"}
+        result = await nginx_logs(plugin, {"log_type": "error"})
+        assert result.status == Status.ERROR
+        assert "Invalid log_path" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_nginx_logs_blocks_path_traversal_in_filename(self):
+        """access_log с '..' или '/' должен быть заблокирован"""
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_logs
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._config = {"access_log": "../../../etc/passwd"}
+        result = await nginx_logs(plugin, {"log_type": "access"})
+        assert result.status == Status.ERROR
+        assert "Invalid access_log" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_nginx_logs_valid_config_runs(self):
+        """Разрешённый config_path и имя файла выполняют команду"""
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_logs
+        from mcp_linx.types import Status
+
+        captured = {}
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._config = {"log_path": "/var/log/nginx", "error_log": "error.log"}
+
+        async def fake_run(command, timeout=30):
+            captured["command"] = command
+            return {"stdout": "error log line\n", "stderr": "", "returncode": 0}
+
+        plugin._run_command = fake_run
+        result = await nginx_logs(plugin, {"log_type": "error", "lines": 50})
+        assert result.status == Status.HEALTHY
+        assert captured["command"] == "tail -n 50 /var/log/nginx/error.log"
+
+
+class TestNginxUpstream:
+    @pytest.mark.asyncio
+    async def test_upstream_all_healthy(self):
+        """Все upstream серверы доступны — status ok"""
+        from unittest.mock import AsyncMock
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_upstream
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._run_command = AsyncMock(return_value={
+            "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}\n",
+            "stderr": "",
+            "returncode": 0,
+        })
+
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        import unittest.mock as um
+        with um.patch("httpx.AsyncClient", return_value=mock_client):
+            result = await nginx_upstream(plugin, {})
+
+        assert result.status == Status.HEALTHY
+        assert result.data["live_servers"] == ["127.0.0.1:8080", "127.0.0.1:8081"]
+        assert result.data["dead_servers"] == []
+
+    @pytest.mark.asyncio
+    async def test_upstream_with_dead_server(self):
+        """Один из upstream недоступен — status degraded"""
+        from unittest.mock import AsyncMock
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_upstream
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._run_command = AsyncMock(return_value={
+            "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:9999;\n}\n",
+            "stderr": "",
+            "returncode": 0,
+        })
+
+        mock_resp_ok = AsyncMock()
+        mock_resp_ok.status_code = 200
+
+        mock_resp_fail = AsyncMock()
+        mock_resp_fail.status_code = 502
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock(side_effect=[mock_resp_ok, mock_resp_fail])
+
+        import unittest.mock as um
+        with um.patch("httpx.AsyncClient", return_value=mock_client):
+            result = await nginx_upstream(plugin, {})
+
+        assert result.status == Status.DEGRADED
+        assert "127.0.0.1:8080" in result.data["live_servers"]
+        assert "127.0.0.1:9999" in result.data["dead_servers"]
+
+    @pytest.mark.asyncio
+    async def test_upstream_unix_socket_skipped(self):
+        """unix-socket upstream пропускается (недоступен по HTTP)"""
+        from unittest.mock import AsyncMock
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_upstream
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._run_command = AsyncMock(return_value={
+            "stdout": "upstream backend {\n    server unix:/tmp/backend.sock;\n}\n",
+            "stderr": "",
+            "returncode": 0,
+        })
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock()
+
+        import unittest.mock as um
+        with um.patch("httpx.AsyncClient", return_value=mock_client):
+            result = await nginx_upstream(plugin, {})
+
+        assert result.status == Status.HEALTHY
+        assert result.data["live_servers"] == []
+        mock_client.get.assert_not_called()
+
+
+class TestNginxConfig:
+    @pytest.mark.asyncio
+    async def test_nginx_config_ok(self):
+        """Конфигурация валидна (returncode=0)"""
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_config
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._run_command = AsyncMock(side_effect=[
+            {"stdout": "nginx: configuration file test is successful\n", "stderr": "", "returncode": 0},
+            {"stdout": "worker_processes auto;\n", "stderr": "", "returncode": 0},
+            {"stdout": "sites-enabled/default\n", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "worker_processes auto;\nworker_connections 1024;\n", "stderr": "", "returncode": 0},
+        ])
+
+        result = await nginx_config(plugin, {})
+        assert result.status == Status.HEALTHY
+        assert result.data["config_test_ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_nginx_config_invalid(self):
+        """Конфигурация невалидна (returncode!=0)"""
+        from mcp_linx.plugins.nginx import NginxPlugin
+        from mcp_linx.plugins.nginx.tools import nginx_config
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NginxPlugin)
+        plugin._run_command = AsyncMock(side_effect=[
+            {"stdout": "", "stderr": "nginx: [emerg] unexpected end of file", "returncode": 1},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "Not found", "stderr": "", "returncode": 0},
+        ])
+
+        result = await nginx_config(plugin, {})
+        assert result.status == Status.HEALTHY
+        assert result.data["config_test_ok"] is False

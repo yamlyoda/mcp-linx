@@ -262,3 +262,23 @@ All variants implemented: redis, systemd, netdiag, kubernetes, prometheus, loki.
 
 ### Discovery check
 - `discover_plugins()` → 10 plugins, 51 tools total
+
+
+---
+
+## Phase 3 — Features (DONE 2026-09-11)
+
+### Implemented
+- **Nginx upstream HTTP health check** — `nginx_upstream` делает реальный HTTP-чек каждого upstream через `httpx` (таймаут, нормализация URL, обработка unix-socket, live/dead списки).
+- **ContextAggregator: 4 новые корреляции** — OOM→restart→5xx (тройная цепочка), postgres idle-in-transaction, replication lag→nginx, linux no-space→docker_prune.
+- **Path traversal fix в nginx_logs** — `_ALLOWED_LOG_DIRS` + `_ALLOWED_LOG_NAMES` allowlist, валидация `basename` для access_log/error_log.
+- **Tests** — 13 unit-тестов: TestNginxLogs (3), TestNginxUpstream (3), TestNginxConfig (2), TestContextAggregatorNewCorrelations (4), nginx_stub_status (1).
+
+### Files Changed
+- `src/mcp_linx/plugins/nginx/tools.py` — import os, константы `_ALLOWED_LOG_DIRS`/`_ALLOWED_LOG_NAMES`, валидация в `nginx_logs`.
+- `tests/unit/test_base_plugins.py` — +9 тестов.
+- `tests/unit/test_context_aggregator.py` — +4 теста.
+- `TODO.md`, `SECURITY.md` — документация.
+
+### Tests
+- **Total: ~80+ tests, 2 skipped (redis-cli).**

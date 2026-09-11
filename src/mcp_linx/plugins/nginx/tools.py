@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp_linx.plugins.nginx import NginxPlugin
@@ -130,8 +131,9 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
     results["live_servers"] = live
     results["dead_servers"] = dead
 
-    status = "degraded" if dead else "ok"
-    return ToolResult.ok({**results, "status": status})
+    if dead:
+        return ToolResult.degraded(results, [f"Dead servers: {', '.join(dead)}"])
+    return ToolResult.ok(results)
 
 
 
@@ -236,12 +238,24 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Чтение error и access логов Nginx"""
     log_type = params.get("log_type", "error")
     lines = min(int(params.get("lines", 100)), 500)
-    
+
     config_path = plugin._config.get("log_path", "/var/log/nginx") if plugin._config else "/var/log/nginx"
     access_log = plugin._config.get("access_log", "access.log") if plugin._config else "access.log"
     error_log = plugin._config.get("error_log", "error.log") if plugin._config else "error.log"
-    
-                
+
+    # Валидация config_path (только разрешённые директории)
+    if config_path not in _ALLOWED_LOG_DIRS:
+        return ToolResult.error(
+            f"Invalid log_path '{config_path}'. Allowed: {', '.join(sorted(_ALLOWED_LOG_DIRS))}"
+        )
+
+    # Валидация имён лог-файлов (basename без путей и "..")
+    for name, value in [("access_log", access_log), ("error_log", error_log)]:
+        if not value or value != os.path.basename(value) or ".." in value:
+            return ToolResult.error(
+                f"Invalid {name} '{value}'. Must be a basename without path separators"
+            )
+
     if log_type == "error":
         log_file = f"{config_path}/{error_log}"
     elif log_type == "access":
@@ -252,7 +266,7 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
         log_file = f"{config_path}/{access_log}"
     else:
         return ToolResult.error(f"Invalid log_type '{log_type}'. Allowed: error, access, error_full, access_full")
-    
+
     command = f"tail -n {lines} {log_file}"
     result = await plugin._run_command(command)
     

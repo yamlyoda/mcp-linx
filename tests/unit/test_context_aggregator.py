@@ -142,3 +142,91 @@ class TestContextAggregator:
         
         overall = aggregator.get_overall_status()
         assert overall == Status.DEGRADED
+
+
+class TestContextAggregatorNewCorrelations:
+    """Тесты для новых корреляций (Phase 3)"""
+
+    @pytest.fixture
+    def aggregator(self) -> ContextAggregator:
+        return ContextAggregator()
+
+    def test_oom_restart_nginx_correlation(self, aggregator: ContextAggregator):
+        """OOM killer → container restart → Nginx 5xx: тройная цепочка"""
+        aggregator.add_component(ComponentState(
+            plugin_id="linux",
+            status=Status.CRITICAL,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["Out of memory: killed process 1234 (nginx)"]
+        ))
+        aggregator.add_component(ComponentState(
+            plugin_id="docker",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["Container webapp restart count 5"]
+        ))
+        aggregator.add_component(ComponentState(
+            plugin_id="nginx",
+            status=Status.CRITICAL,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["upstream timed out"]
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        oom_corr = [c for c in ctx.correlations if c.source == "linux" and "docker" in c.related and "nginx" in c.related]
+        assert len(oom_corr) >= 1
+
+    def test_postgres_idle_in_transaction(self, aggregator: ContextAggregator):
+        """PostgreSQL idle-in-transaction — root cause suspected"""
+        aggregator.add_component(ComponentState(
+            plugin_id="postgres",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["idle in transaction", "blocked queries"]
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        pg_corr = [c for c in ctx.correlations if c.source == "postgres" and "idle" in c.evidence.lower()]
+        assert len(pg_corr) >= 1
+
+    def test_postgres_replication_lag(self, aggregator: ContextAggregator):
+        """PostgreSQL replication lag + Nginx degraded"""
+        aggregator.add_component(ComponentState(
+            plugin_id="postgres",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["replication lag 30s"]
+        ))
+        aggregator.add_component(ComponentState(
+            plugin_id="nginx",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["upstream timed out"]
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        repl_corr = [c for c in ctx.correlations if c.source == "postgres" and "nginx" in c.related and "replication" in c.evidence.lower()]
+        assert len(repl_corr) >= 1
+
+    def test_linux_no_space_docker_prune(self, aggregator: ContextAggregator):
+        """Linux no space left → docker_prune recommendation"""
+        aggregator.add_component(ComponentState(
+            plugin_id="linux",
+            status=Status.CRITICAL,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["no space left on device /var/lib/docker"]
+        ))
+        aggregator.add_component(ComponentState(
+            plugin_id="docker",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["image build failed"]
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        disk_corr = [c for c in ctx.correlations if c.source == "linux" and "docker" in c.related and "space" in c.evidence.lower()]
+        assert len(disk_corr) >= 1
