@@ -30,7 +30,6 @@ dependencies = [
     "redis>=5.0.0",
     "kubernetes>=30.0.0",
     "python-dotenv>=1.0.0",
-    "textual>=0.22.0",
 ]
 
 [project.optional-dependencies]

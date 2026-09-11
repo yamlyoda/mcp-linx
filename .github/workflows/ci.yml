@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check src tests
+      - name: Ruff format check
+        run: ruff format --check src tests
+      - name: Mypy
+        run: mypy src/mcp_linx --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest tests/unit -q
+      - name: Import / discovery check
+        run: |
+          python -c "
+          import logging; logging.disable(logging.CRITICAL)
+          from mcp_linx.harness.plugin_manager import PluginManager, discover_plugins
+          n = discover_plugins()
+          pm = PluginManager({}); pm.load_plugins()
+          print(f'plugins: {n} | tools: {len(pm.get_tools())}')
+          assert n >= 10 and len(pm.get_tools()) >= 50
+          "
