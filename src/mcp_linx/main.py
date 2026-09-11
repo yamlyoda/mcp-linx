@@ -9,6 +9,7 @@ import asyncio
 import logging
 import signal
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 import yaml
@@ -17,10 +18,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mcp_linx.harness import (
     DefaultAgentLoop,
+    PluginManager,
     StreamingAgentLoop,
     discover_plugins,
-    PluginManager,
 )
+
 
 # Конфигурация через переменные окружения
 class Settings(BaseSettings):
@@ -50,7 +52,7 @@ def load_config(path: str) -> dict:
     """Загрузить YAML-конфигурацию."""
     config_file = Path(path)
     if config_file.exists():
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             return yaml.safe_load(f) or {}
     logger.warning(f"Config file not found: {path}, using defaults")
     return {}
@@ -118,11 +120,9 @@ async def main():
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_handler()))
-        except NotImplementedError:
+        with suppress(NotImplementedError):
             # Windows doesn't support add_signal_handler
-            pass
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_handler()))
 
     await start_server()
 

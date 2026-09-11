@@ -8,9 +8,9 @@ import shlex
 import socket
 import ssl
 import time
-from datetime import datetime, timezone
+from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -38,11 +38,15 @@ async def http_check(plugin, params: dict[str, Any]) -> ToolResult:
             "content_length": resp.headers.get("content-length", ""),
         }
         if resp.status_code >= 500:
-            return ToolResult.degraded(data, [f"Server error {resp.status_code} — см. nginx_logs/docker_logs"])
+            return ToolResult.degraded(
+                data, [f"Server error {resp.status_code} — см. nginx_logs/docker_logs"]
+            )
         if resp.status_code >= 400:
             return ToolResult.degraded(data, [f"Client error {resp.status_code}"])
         if elapsed_ms > 3000:
-            return ToolResult.degraded(data, [f"Slow response {elapsed_ms}ms — проверьте upstream/DB"])
+            return ToolResult.degraded(
+                data, [f"Slow response {elapsed_ms}ms — проверьте upstream/DB"]
+            )
         return ToolResult.ok(data)
     except Exception as e:
         return ToolResult.error(str(e))
@@ -60,16 +64,18 @@ async def tls_check(plugin, params: dict[str, Any]) -> ToolResult:
         loop = asyncio.get_event_loop()
 
         def _fetch():
-            with socket.create_connection((host, port), timeout=timeout) as sock:
-                with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-                    cert = ssock.getpeercert()
-                    chain = ssock.getpeercertchain() if hasattr(ssock, "getpeercertchain") else None
-                    return cert, len(chain) if chain else 1
+            with (
+                socket.create_connection((host, port), timeout=timeout) as sock,
+                ctx.wrap_socket(sock, server_hostname=host) as ssock,
+            ):
+                cert = ssock.getpeercert()
+                chain = ssock.getpeercertchain() if hasattr(ssock, "getpeercertchain") else None
+                return cert, len(chain) if chain else 1
 
         cert, chain_len = await loop.run_in_executor(None, _fetch)
         not_after = cert.get("notAfter", "")
-        dt = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-        days_left = (dt - datetime.now(timezone.utc)).days
+        dt = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
+        days_left = (dt - datetime.now(UTC)).days
         issuer = " / ".join("=".join(x[0]) for x in cert.get("issuer", ()))
         subject = " / ".join("=".join(x[0]) for x in cert.get("subject", ()))
         sans = cert.get("subjectAltName", ())
@@ -84,8 +90,11 @@ async def tls_check(plugin, params: dict[str, Any]) -> ToolResult:
             "san": [v for _, v in sans],
         }
         if days_left < 0:
-            return ToolResult(status=Status.CRITICAL, data=data,
-                              suggestions=["Сертификат ПРОСРОЧЕН — обновите немедленно"])
+            return ToolResult(
+                status=Status.CRITICAL,
+                data=data,
+                suggestions=["Сертификат ПРОСРОЧЕН — обновите немедленно"],
+            )
         if days_left < 14:
             return ToolResult.degraded(data, [f"Сертификат истекает через {days_left} дн."])
         return ToolResult.ok(data)
@@ -136,11 +145,11 @@ async def tcp_connect(plugin, params: dict[str, Any]) -> ToolResult:
         )
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
-        return ToolResult.ok({"host": host, "port": port, "reachable": True, "connect_ms": elapsed_ms})
+        with suppress(Exception):
+            await writer.wait_closed()  # connection may already be closed
+        return ToolResult.ok(
+            {"host": host, "port": port, "reachable": True, "connect_ms": elapsed_ms}
+        )
     except Exception as e:
         return ToolResult(
             status=Status.UNHEALTHY,
@@ -188,16 +197,22 @@ async def tcp_connect_as(plugin, params: dict[str, Any]) -> ToolResult:
     elapsed_ms = round((time.monotonic() - started) * 1000, 1)
     ok = result.get("returncode", 1) == 0
     data: dict[str, Any] = {
-        "host": host, "port": port, "user": user,
-        "reachable": ok, "elapsed_ms": elapsed_ms,
+        "host": host,
+        "port": port,
+        "user": user,
+        "reachable": ok,
+        "elapsed_ms": elapsed_ms,
         "stderr": (result.get("stderr", "") or result.get("stdout", ""))[:500],
     }
     if ok:
         return ToolResult.ok(data)
     return ToolResult(
-        status=Status.UNHEALTHY, data=data,
-        suggestions=[f"Connect as {user} to {host}:{port} failed — "
-                     "возможен per-uid фильтр (nft skuid / systemd IPAllow)"],
+        status=Status.UNHEALTHY,
+        data=data,
+        suggestions=[
+            f"Connect as {user} to {host}:{port} failed — "
+            "возможен per-uid фильтр (nft skuid / systemd IPAllow)"
+        ],
         error_message=f"tcp probe as {user} failed (rc={result.get('returncode')})",
     )
 
@@ -232,18 +247,26 @@ async def tcpdump_probe(plugin, params: dict[str, Any]) -> ToolResult:
     if runner is None:
         return ToolResult.error("tcpdump_probe not supported by this adapter")
 
-    cmd = (f"timeout {timeout} tcpdump -i {shlex.quote(iface)} -c {count} -nn "
-           f"host {shlex.quote(host)} and port {port} 2>&1")
+    cmd = (
+        f"timeout {timeout} tcpdump -i {shlex.quote(iface)} -c {count} -nn "
+        f"host {shlex.quote(host)} and port {port} 2>&1"
+    )
     result = await runner(cmd, timeout + 5)
     text = (result.get("stdout", "") or "")[:4000]
-    packets = [ln for ln in text.splitlines()
-               if re.match(r"^\d{2}:\d{2}:\d{2}\.", ln.strip())]
-    data = {"host": host, "port": port, "iface": iface,
-            "packets_seen": len(packets), "output": text}
+    packets = [ln for ln in text.splitlines() if re.match(r"^\d{2}:\d{2}:\d{2}\.", ln.strip())]
+    data = {
+        "host": host,
+        "port": port,
+        "iface": iface,
+        "packets_seen": len(packets),
+        "output": text,
+    }
     if not packets:
         return ToolResult.degraded(
             data,
-            ["0 пакетов при пробе — дроп ниже интерфейса "
-             "(cgroup_skb/systemd IPAllow) либо хост:порт недоступен"],
+            [
+                "0 пакетов при пробе — дроп ниже интерфейса "
+                "(cgroup_skb/systemd IPAllow) либо хост:порт недоступен"
+            ],
         )
     return ToolResult.ok(data)

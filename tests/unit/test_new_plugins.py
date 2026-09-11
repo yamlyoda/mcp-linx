@@ -21,9 +21,12 @@ class TestRedisTools:
         from mcp_linx.plugins.redis.tools import redis_ping
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(RedisPlugin, {
-            "_run_redis_cli": {"stdout": "PONG\n", "stderr": "", "returncode": 0},
-        })
+        plugin = _make_plugin(
+            RedisPlugin,
+            {
+                "_run_redis_cli": {"stdout": "PONG\n", "stderr": "", "returncode": 0},
+            },
+        )
         result = await redis_ping(plugin, {})
         assert result.status == Status.HEALTHY
         assert result.data["reachable"] is True
@@ -34,9 +37,12 @@ class TestRedisTools:
         from mcp_linx.plugins.redis.tools import redis_ping
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(RedisPlugin, {
-            "_run_redis_cli": {"stdout": "", "stderr": "Connection refused", "returncode": 1},
-        })
+        plugin = _make_plugin(
+            RedisPlugin,
+            {
+                "_run_redis_cli": {"stdout": "", "stderr": "Connection refused", "returncode": 1},
+            },
+        )
         result = await redis_ping(plugin, {})
         assert result.status == Status.UNHEALTHY
 
@@ -56,14 +62,18 @@ class TestRedisTools:
         from mcp_linx.plugins.redis.tools import redis_memory
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(RedisPlugin, {
-            "_run_redis_cli": {
-                "stdout": "used_memory:100\nused_memory_human:100B\nused_memory_peak:120\n"
-                          "mem_fragmentation_ratio:1.1\nmaxmemory:100\nmaxmemory_policy:allkeys-lru\n"
-                          "evicted_keys:50\nexpired_keys:5\n",
-                "stderr": "", "returncode": 0,
+        plugin = _make_plugin(
+            RedisPlugin,
+            {
+                "_run_redis_cli": {
+                    "stdout": "used_memory:100\nused_memory_human:100B\nused_memory_peak:120\n"
+                    "mem_fragmentation_ratio:1.1\nmaxmemory:100\nmaxmemory_policy:allkeys-lru\n"
+                    "evicted_keys:50\nexpired_keys:5\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
             },
-        })
+        )
         result = await redis_memory(plugin, {})
         assert result.status == Status.DEGRADED
         assert any("evicted" in s for s in result.suggestions)
@@ -77,11 +87,13 @@ class TestSystemdTools:
         from mcp_linx.types import Status
 
         plugin = _make_plugin(SystemdPlugin, {})
-        plugin._run = AsyncMock(side_effect=[
-            {"stdout": "active\n", "stderr": "", "returncode": 0},
-            {"stdout": "enabled\n", "stderr": "", "returncode": 0},
-            {"stdout": "unit status\n", "stderr": "", "returncode": 0},
-        ])
+        plugin._run = AsyncMock(
+            side_effect=[
+                {"stdout": "active\n", "stderr": "", "returncode": 0},
+                {"stdout": "enabled\n", "stderr": "", "returncode": 0},
+                {"stdout": "unit status\n", "stderr": "", "returncode": 0},
+            ]
+        )
         result = await service_status(plugin, {"unit": "nginx.service"})
         assert result.status == Status.HEALTHY
 
@@ -101,9 +113,12 @@ class TestSystemdTools:
         from mcp_linx.plugins.systemd.tools import failed_units
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(SystemdPlugin, {
-            "_run": {"stdout": "", "stderr": "", "returncode": 0},
-        })
+        plugin = _make_plugin(
+            SystemdPlugin,
+            {
+                "_run": {"stdout": "", "stderr": "", "returncode": 0},
+            },
+        )
         result = await failed_units(plugin, {})
         assert result.status == Status.HEALTHY
         assert result.data["count"] == 0
@@ -115,12 +130,18 @@ class TestSystemdTools:
         from mcp_linx.types import Status
 
         plugin = _make_plugin(SystemdPlugin, {})
-        plugin._run = AsyncMock(side_effect=[
-            {"stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n", "stderr": "", "returncode": 0},
-            {"stdout": "NO_CGROUP_BPF\n", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-        ])
+        plugin._run = AsyncMock(
+            side_effect=[
+                {
+                    "stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "NO_CGROUP_BPF\n", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+            ]
+        )
         result = await service_ip_filter(plugin, {"unit": "nginx.service"})
         assert result.status == Status.HEALTHY
         assert result.data["verdict"] == "no_ip_filter_detected"
@@ -132,13 +153,31 @@ class TestSystemdTools:
         from mcp_linx.types import Status
 
         plugin = _make_plugin(SystemdPlugin, {})
-        plugin._run = AsyncMock(side_effect=[
-            {"stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n", "stderr": "", "returncode": 0},
-            {"stdout": "ID 106 cgroup_skb name sd_fw_egress attached\n", "stderr": "", "returncode": 0},
-            {"stdout": "106: cgroup_skb name sd_fw_egress tag abc\n", "stderr": "", "returncode": 0},
-            {"stdout": "11: lpm_trie name 4_app flags 0x1\n", "stderr": "", "returncode": 0},
-            {"stdout": "key: 08 00 00 00 7f 00 00 00 value: 01 00 00 00\n", "stderr": "", "returncode": 0},
-        ])
+        plugin._run = AsyncMock(
+            side_effect=[
+                {
+                    "stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {
+                    "stdout": "ID 106 cgroup_skb name sd_fw_egress attached\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {
+                    "stdout": "106: cgroup_skb name sd_fw_egress tag abc\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "11: lpm_trie name 4_app flags 0x1\n", "stderr": "", "returncode": 0},
+                {
+                    "stdout": "key: 08 00 00 00 7f 00 00 00 value: 01 00 00 00\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+            ]
+        )
         result = await service_ip_filter(plugin, {"unit": "app.service"})
         assert result.status == Status.DEGRADED
         assert result.data["verdict"] == "hidden_filter"
@@ -194,7 +233,9 @@ class TestNetdiagTools:
 
         plugin = MagicMock(spec=NetdiagPlugin)
         plugin._config = {}
-        result = await tcp_connect_as(plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"})
+        result = await tcp_connect_as(
+            plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"}
+        )
         assert result.status == Status.ERROR
         assert "privileged_tools" in (result.error_message or "")
 
@@ -217,8 +258,12 @@ class TestNetdiagTools:
 
         plugin = MagicMock(spec=NetdiagPlugin)
         plugin._config = {"privileged_tools": True}
-        plugin._run_privileged = AsyncMock(return_value={"stdout": "", "stderr": "", "returncode": 0})
-        result = await tcp_connect_as(plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"})
+        plugin._run_privileged = AsyncMock(
+            return_value={"stdout": "", "stderr": "", "returncode": 0}
+        )
+        result = await tcp_connect_as(
+            plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"}
+        )
         assert result.status == Status.HEALTHY
         assert result.data["reachable"] is True
 
@@ -242,7 +287,13 @@ class TestNetdiagTools:
 
         plugin = MagicMock(spec=NetdiagPlugin)
         plugin._config = {"privileged_tools": True}
-        plugin._run_privileged = AsyncMock(return_value={"stdout": "tcpdump: listening\n0 packets captured\n", "stderr": "", "returncode": 0})
+        plugin._run_privileged = AsyncMock(
+            return_value={
+                "stdout": "tcpdump: listening\n0 packets captured\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        )
         result = await tcpdump_probe(plugin, {"host": "10.0.0.1", "port": 5432})
         assert result.status == Status.DEGRADED
         assert result.data["packets_seen"] == 0

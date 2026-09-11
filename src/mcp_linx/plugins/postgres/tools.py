@@ -55,7 +55,9 @@ async def pg_stats(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
 async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult:
     """Статус репликации (если настроена)"""
     try:
-        is_primary = await plugin._execute_query_one("SELECT pg_is_in_recovery() AS is_in_recovery;")
+        is_primary = await plugin._execute_query_one(
+            "SELECT pg_is_in_recovery() AS is_in_recovery;"
+        )
 
         if is_primary and is_primary.get("is_in_recovery"):
             replication_query = """
@@ -64,7 +66,9 @@ async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
             FROM pg_stat_replication;
             """
             status = await plugin._execute_query(replication_query)
-            return ToolResult.ok({"role": "standby", "replication_status": status, "is_in_recovery": True})
+            return ToolResult.ok(
+                {"role": "standby", "replication_status": status, "is_in_recovery": True}
+            )
         else:
             replication_query = """
             SELECT client_addr, client_hostname, client_port, pid AS writer_pid,
@@ -73,10 +77,11 @@ async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
             FROM pg_stat_replication;
             """
             status = await plugin._execute_query(replication_query)
-            return ToolResult.ok({"role": "primary", "replication_status": status, "is_in_recovery": False})
+            return ToolResult.ok(
+                {"role": "primary", "replication_status": status, "is_in_recovery": False}
+            )
     except Exception as e:
         return ToolResult.error(f"Failed to get replication status: {e}")
-
 
 
 async def pg_activity(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult:
@@ -100,14 +105,16 @@ async def pg_activity(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolRes
         idle_in_transaction = sum(1 for a in activity if a.get("state") == "idle in transaction")
         waiting = sum(1 for a in activity if a.get("wait_event_type") == "Lock")
 
-        return ToolResult.ok({
-            "activity": activity,
-            "total": total,
-            "active": active,
-            "idle": idle,
-            "idle_in_transaction": idle_in_transaction,
-            "waiting": waiting,
-        })
+        return ToolResult.ok(
+            {
+                "activity": activity,
+                "total": total,
+                "active": active,
+                "idle": idle,
+                "idle_in_transaction": idle_in_transaction,
+                "waiting": waiting,
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get activity: {e}")
 
@@ -127,23 +134,27 @@ async def pg_connections(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
         connections = await plugin._execute_query(query)
 
         total = len(connections)
-        active = sum(1 for c in connections if c.get("state") not in ("idle", "idle in transaction"))
+        active = sum(
+            1 for c in connections if c.get("state") not in ("idle", "idle in transaction")
+        )
         idle = sum(1 for c in connections if c.get("state") == "idle")
         idle_in_transaction = sum(1 for c in connections if c.get("state") == "idle in transaction")
 
-        return ToolResult.ok({
-            "connections": connections,
-            "total": total,
-            "active": active,
-            "idle": idle,
-            "idle_in_transaction": idle_in_transaction,
-            "summary": {
-                "total_connections": total,
-                "active_queries": active,
-                "idle_connections": idle,
+        return ToolResult.ok(
+            {
+                "connections": connections,
+                "total": total,
+                "active": active,
+                "idle": idle,
                 "idle_in_transaction": idle_in_transaction,
-            },
-        })
+                "summary": {
+                    "total_connections": total,
+                    "active_queries": active,
+                    "idle_connections": idle,
+                    "idle_in_transaction": idle_in_transaction,
+                },
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get connections: {e}")
 
@@ -164,7 +175,7 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
 
         all_locks = await plugin._execute_query(locks_query)
 
-        blocked_locks = [l for l in all_locks if not l.get("granted")]
+        blocked_locks = [lock for lock in all_locks if not lock.get("granted")]
 
         blocking_info = []
         for blocked in blocked_locks:
@@ -178,30 +189,34 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
             FROM pg_locks l2
             JOIN pg_stat_activity a2 ON l2.pid = a2.pid
             WHERE l2.granted = true
-              AND l2.pid != {blocked['pid']}
+              AND l2.pid != {blocked["pid"]}
             LIMIT 1;
             """
             blocking = await plugin._execute_query(blocking_query)
             if blocking:
-                blocking_info.append({
-                    "blocked_pid": blocked["pid"],
-                    "blocked_mode": blocked["mode"],
-                    "blocking_pid": blocking[0]["blocking_pid"],
-                    "blocking_query": blocking[0]["blocking_query"],
-                    "blocking_state": blocking[0]["blocking_state"],
-                    "blocking_user": blocking[0]["blocking_user"],
-                })
+                blocking_info.append(
+                    {
+                        "blocked_pid": blocked["pid"],
+                        "blocked_mode": blocked["mode"],
+                        "blocking_pid": blocking[0]["blocking_pid"],
+                        "blocking_query": blocking[0]["blocking_query"],
+                        "blocking_state": blocking[0]["blocking_state"],
+                        "blocking_user": blocking[0]["blocking_user"],
+                    }
+                )
 
-        return ToolResult.ok({
-            "all_locks": all_locks,
-            "blocked_locks": blocked_locks,
-            "blocking_info": blocking_info,
-            "summary": {
-                "total_locks": len(all_locks),
-                "blocked_locks_count": len(blocked_locks),
-                "blocking_processes_count": len(blocking_info),
-            },
-        })
+        return ToolResult.ok(
+            {
+                "all_locks": all_locks,
+                "blocked_locks": blocked_locks,
+                "blocking_info": blocking_info,
+                "summary": {
+                    "total_locks": len(all_locks),
+                    "blocked_locks_count": len(blocked_locks),
+                    "blocking_processes_count": len(blocking_info),
+                },
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get locks: {e}")
 
@@ -236,16 +251,19 @@ async def pg_tables(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResul
         tables = await plugin._execute_query(query, (schema,))
 
         needs_vacuum = [
-            t for t in tables
+            t
+            for t in tables
             if t.get("dead_rows", 0) > 1000 or t.get("unanalyzed_changes", 0) > 10000
         ]
 
-        return ToolResult.ok({
-            "tables": tables,
-            "schema": schema,
-            "count": len(tables),
-            "needs_vacuum": needs_vacuum,
-        })
+        return ToolResult.ok(
+            {
+                "tables": tables,
+                "schema": schema,
+                "count": len(tables),
+                "needs_vacuum": needs_vacuum,
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get tables: {e}")
 
@@ -269,11 +287,12 @@ async def pg_slow_queries(plugin: PostgresPlugin, params: dict[str, Any]) -> Too
 
         slow_queries = await plugin._execute_query(query)
 
-        return ToolResult.ok({
-            "slow_queries": slow_queries,
-            "threshold_ms": threshold_ms,
-            "count": len(slow_queries),
-        })
+        return ToolResult.ok(
+            {
+                "slow_queries": slow_queries,
+                "threshold_ms": threshold_ms,
+                "count": len(slow_queries),
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get slow queries: {e}")
-

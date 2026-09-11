@@ -11,8 +11,8 @@ from mcp_linx.types import ToolResult
 async def docker_containers(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Список контейнеров с фильтрацией"""
     all_ = params.get("all", True)
-    filters = params.get("filters", None)
-    
+    filters = params.get("filters")
+
     # Применяем фильтры по умолчанию из конфига
     default_filters = plugin._config.get("filters", {}) if plugin._config else {}
     if filters is None:
@@ -22,13 +22,15 @@ async def docker_containers(plugin: DockerPlugin, params: dict[str, Any]) -> Too
         merged = dict(default_filters)
         merged.update(filters)
         filters = merged
-    
+
     try:
         containers = await plugin._adapter.list_containers(all_=all_, filters=filters)
-        return ToolResult.ok({
-            "containers": containers,
-            "count": len(containers),
-        })
+        return ToolResult.ok(
+            {
+                "containers": containers,
+                "count": len(containers),
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to list containers: {e}")
 
@@ -38,17 +40,19 @@ async def docker_logs(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
     container_id = params.get("container_id")
     tail = int(params.get("tail", 100))
     since = params.get("since")
-    
+
     if not container_id:
         return ToolResult.error("Container ID is required")
-    
+
     try:
         logs = await plugin._adapter.get_container_logs(container_id, tail=tail, since=since)
-        return ToolResult.ok({
-            "logs": logs["stdout"],
-            "container_id": container_id,
-            "tail": tail,
-        })
+        return ToolResult.ok(
+            {
+                "logs": logs["stdout"],
+                "container_id": container_id,
+                "tail": tail,
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get logs: {e}")
 
@@ -56,10 +60,10 @@ async def docker_logs(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
 async def docker_stats(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Статистика контейнера: CPU, память, сеть"""
     container_id = params.get("container_id")
-    
+
     if not container_id:
         return ToolResult.error("Container ID is required")
-    
+
     try:
         stats = await plugin._adapter.get_container_stats(container_id)
         return ToolResult.ok(stats)
@@ -70,15 +74,17 @@ async def docker_stats(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResu
 async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Полная информация о контейнере или системе"""
     container_id = params.get("container_id")
-    
+
     if container_id:
         try:
             info = await plugin._adapter.get_container_info(container_id)
-            return ToolResult.ok({
-                "type": "container",
-                "container_id": container_id,
-                "info": info,
-            })
+            return ToolResult.ok(
+                {
+                    "type": "container",
+                    "container_id": container_id,
+                    "info": info,
+                }
+            )
         except Exception as e:
             return ToolResult.error(f"Failed to get container info: {e}")
     else:
@@ -87,26 +93,32 @@ async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
             import asyncio
 
             # Docker version
-            version = await asyncio.get_event_loop().run_in_executor(None, plugin._adapter._client.version)
+            version = await asyncio.get_event_loop().run_in_executor(
+                None, plugin._adapter._client.version
+            )
             # Docker info
-            info = await asyncio.get_event_loop().run_in_executor(None, plugin._adapter._client.info)
-            
-            return ToolResult.ok({
-                "type": "system",
-                "version": version,
-                "info": {
-                    "containers": info.get("Containers", 0),
-                    "images": info.get("Images", 0),
-                    "driver": info.get("Driver", ""),
-                    "storage_driver": info.get("Storage Driver", ""),
-                    "ncpu": info.get("NCPU", 0),
-                    "memory_bytes": info.get("MemTotal", 0),
-                    "docker_root_dir": info.get("DockerRootDir", ""),
-                    "kernel_version": info.get("KernelVersion", ""),
-                    "os_type": info.get("OSType", ""),
-                    "operating_system": info.get("OperatingSystem", ""),
-                },
-            })
+            info = await asyncio.get_event_loop().run_in_executor(
+                None, plugin._adapter._client.info
+            )
+
+            return ToolResult.ok(
+                {
+                    "type": "system",
+                    "version": version,
+                    "info": {
+                        "containers": info.get("Containers", 0),
+                        "images": info.get("Images", 0),
+                        "driver": info.get("Driver", ""),
+                        "storage_driver": info.get("Storage Driver", ""),
+                        "ncpu": info.get("NCPU", 0),
+                        "memory_bytes": info.get("MemTotal", 0),
+                        "docker_root_dir": info.get("DockerRootDir", ""),
+                        "kernel_version": info.get("KernelVersion", ""),
+                        "os_type": info.get("OSType", ""),
+                        "operating_system": info.get("OperatingSystem", ""),
+                    },
+                }
+            )
         except Exception as e:
             return ToolResult.error(f"Failed to get system info: {e}")
 
@@ -116,17 +128,19 @@ async def docker_events(plugin: DockerPlugin, params: dict[str, Any]) -> ToolRes
     since = params.get("since")
     until = params.get("until")
     event_filters = params.get("filters", ["container"])
-    
+
     try:
         events = await plugin._adapter.get_events(
             since=since,
             until=until,
             event_filters=event_filters,
         )
-        return ToolResult.ok({
-            "events": events,
-            "count": len(events),
-        })
+        return ToolResult.ok(
+            {
+                "events": events,
+                "count": len(events),
+            }
+        )
     except Exception as e:
         return ToolResult.error(f"Failed to get events: {e}")
 
@@ -164,20 +178,24 @@ async def docker_prune(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResu
     try:
         if not execute:
             # Dry-run: список контейнеров-кандидатов без удаления
-            containers = await plugin.list_containers(
-                all_=True, filters=filters, limit=100
-            )
+            containers = await plugin.list_containers(all_=True, filters=filters, limit=100)
             candidates = [c for c in containers if c.get("status") != "running"]
-            return ToolResult.ok({
-                "mode": "dry-run",
-                "candidates_count": len(candidates),
-                "candidates": [
-                    {"id": c.get("id"), "name": c.get("name"),
-                     "status": c.get("status"), "image": c.get("image")}
-                    for c in candidates
-                ],
-                "hint": "Это dry-run. Для реального удаления передайте execute=true и confirm=true",
-            })
+            return ToolResult.ok(
+                {
+                    "mode": "dry-run",
+                    "candidates_count": len(candidates),
+                    "candidates": [
+                        {
+                            "id": c.get("id"),
+                            "name": c.get("name"),
+                            "status": c.get("status"),
+                            "image": c.get("image"),
+                        }
+                        for c in candidates
+                    ],
+                    "hint": "Это dry-run. Для реального удаления передайте execute=true и confirm=true",
+                }
+            )
 
         result = await plugin.prune_containers(filters=filters)
         return ToolResult.ok({"mode": "executed", **result})

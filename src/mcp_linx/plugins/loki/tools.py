@@ -12,7 +12,7 @@ from mcp_linx.types import ToolResult
 def _check_logql(query: str) -> str | None:
     q = query.strip()
     if not q:
-        return "Param 'query' is required (LogQL, e.g. {app=\"nginx\"} |= \"error\")"
+        return 'Param \'query\' is required (LogQL, e.g. {app="nginx"} |= "error")'
     if len(q) > 2000:
         return "Query too long (max 2000 chars)"
     return None
@@ -40,12 +40,16 @@ async def log_search(plugin, params: dict[str, Any]) -> ToolResult:
         total = sum(len(s.get("values", [])) for s in streams)
         entries = []
         for s in streams[:10]:
-            for ts, line in s.get("values", [])[-20:]:
+            for _ts, line in s.get("values", [])[-20:]:
                 entries.append({"stream": s.get("stream", {}), "line": line[:500]})
-        return ToolResult.ok({
-            "query": query, "streams": len(streams),
-            "total_lines": total, "entries": entries[:limit],
-        })
+        return ToolResult.ok(
+            {
+                "query": query,
+                "streams": len(streams),
+                "total_lines": total,
+                "entries": entries[:limit],
+            }
+        )
     except Exception as e:
         return ToolResult.error(str(e))
 

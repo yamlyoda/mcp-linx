@@ -21,9 +21,12 @@ class TestPostgresTools:
         from mcp_linx.plugins.postgres.tools import pg_connections
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(PostgresPlugin, {
-            "_execute_query": [{"state": "active"}, {"state": "idle"}],
-        })
+        plugin = _make_plugin(
+            PostgresPlugin,
+            {
+                "_execute_query": [{"state": "active"}, {"state": "idle"}],
+            },
+        )
         result = await pg_connections(plugin, {})
         assert result.status == Status.HEALTHY
 

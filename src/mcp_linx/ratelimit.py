@@ -28,7 +28,7 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     @classmethod
-    def from_config(cls, sec: dict[str, Any] | None) -> "RateLimiter":
+    def from_config(cls, sec: dict[str, Any] | None) -> RateLimiter:
         sec = sec or {}
         return cls(
             max_calls=int(sec.get("rate_limit_max_calls", 60)),

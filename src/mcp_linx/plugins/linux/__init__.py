@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
-from mcp_linx.security import SecurityGuard
-from mcp_linx.types import HealthStatus, PluginConfig, Status, ToolResult
 from mcp_linx.adapters.base import BaseAdapter, LocalAdapter
 from mcp_linx.adapters.ssh import SSHAdapter
+from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
+from mcp_linx.security import SecurityGuard
+from mcp_linx.types import HealthStatus, PluginConfig, Status
+from mcp_linx.types import ToolResult as ToolResult
 
 
 class LinuxPlugin(DiagnosticPlugin):
@@ -25,25 +26,41 @@ class LinuxPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.linux.tools import (
-            linux_host_stats,
-            linux_processes,
-            linux_logs,
-            linux_network,
-            linux_firewall,
             linux_disk,
-            linux_memory,
             linux_execute_command,
+            linux_firewall,
+            linux_host_stats,
+            linux_logs,
+            linux_memory,
+            linux_network,
+            linux_processes,
         )
 
         return [
-            PluginTool("linux_host_stats", "Получение статистики хоста: CPU, память, диск, загрузка", linux_host_stats),
-            PluginTool("linux_processes", "Список запущенных процессов с фильтрацией", linux_processes),
+            PluginTool(
+                "linux_host_stats",
+                "Получение статистики хоста: CPU, память, диск, загрузка",
+                linux_host_stats,
+            ),
+            PluginTool(
+                "linux_processes", "Список запущенных процессов с фильтрацией", linux_processes
+            ),
             PluginTool("linux_logs", "Чтение системных логов (journalctl, syslog)", linux_logs),
             PluginTool("linux_network", "Сетевые интерфейсы, порты, соединения", linux_network),
-            PluginTool("linux_firewall", "Firewall snapshot: nftables + iptables + policy routing (read-only)", linux_firewall),
+            PluginTool(
+                "linux_firewall",
+                "Firewall snapshot: nftables + iptables + policy routing (read-only)",
+                linux_firewall,
+            ),
             PluginTool("linux_disk", "Использование диска и файловых систем", linux_disk),
-            PluginTool("linux_memory", "Детальная информация об использовании памяти", linux_memory),
-            PluginTool("linux_execute_command", "Выполнение произвольной read-only команды", linux_execute_command),
+            PluginTool(
+                "linux_memory", "Детальная информация об использовании памяти", linux_memory
+            ),
+            PluginTool(
+                "linux_execute_command",
+                "Выполнение произвольной read-only команды",
+                linux_execute_command,
+            ),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -57,21 +74,29 @@ class LinuxPlugin(DiagnosticPlugin):
 
         sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
 
-        self._security = SecurityGuard({
-            "readonly": bool(sec.get("readonly", True)),
-            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 10000))),
-            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 500))),
-            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 30))),
-            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
-        })
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(
+                    sec.get("max_command_output_size", config.get("max_command_output_size", 10000))
+                ),
+                "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 500))),
+                "command_timeout_seconds": int(
+                    sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 30))
+                ),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
 
         await self._adapter.connect()
 
     async def health_check(self) -> HealthStatus:
         try:
             ping_result = await self._adapter.ping()
-            return HealthStatus(Status.HEALTHY if ping_result else Status.UNHEALTHY,
-                                "Host is reachable" if ping_result else "Host is not reachable")
+            return HealthStatus(
+                Status.HEALTHY if ping_result else Status.UNHEALTHY,
+                "Host is reachable" if ping_result else "Host is not reachable",
+            )
         except Exception as e:
             return HealthStatus(Status.ERROR, f"Health check failed: {e}")
 

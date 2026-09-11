@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     """Статус диагностики"""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     CRITICAL = "critical"
@@ -19,7 +20,7 @@ class Status(str, Enum):
 
 class ToolResult:
     """Результат выполнения MCP tool"""
-    
+
     def __init__(
         self,
         status: Status = Status.UNKNOWN,
@@ -33,7 +34,7 @@ class ToolResult:
         self.metadata = metadata or {}
         self.suggestions = suggestions or []
         self.error_message = error_message
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
@@ -42,28 +43,31 @@ class ToolResult:
             "suggestions": self.suggestions,
             "error_message": self.error_message,
         }
-    
+
     @classmethod
-    def ok(cls, data: Any, metadata: dict[str, Any] | None = None) -> "ToolResult":
+    def ok(cls, data: Any, metadata: dict[str, Any] | None = None) -> ToolResult:
         return cls(status=Status.HEALTHY, data=data, metadata=metadata or {})
-    
+
     @classmethod
     def degraded(
         cls,
         data: Any,
         suggestions: list[str],
         metadata: dict[str, Any] | None = None,
-    ) -> "ToolResult":
-        return cls(status=Status.DEGRADED, data=data, suggestions=suggestions, metadata=metadata or {})
-    
+    ) -> ToolResult:
+        return cls(
+            status=Status.DEGRADED, data=data, suggestions=suggestions, metadata=metadata or {}
+        )
+
     @classmethod
-    def error(cls, error_message: str, metadata: dict[str, Any] | None = None) -> "ToolResult":
+    def error(cls, error_message: str, metadata: dict[str, Any] | None = None) -> ToolResult:
         return cls(status=Status.ERROR, error_message=error_message, metadata=metadata or {})
 
 
 @dataclass
 class ComponentState:
     """Состояние компонента для контекстного агрегатора"""
+
     plugin_id: str
     status: Status
     last_checked: str
@@ -74,6 +78,7 @@ class ComponentState:
 @dataclass
 class Correlation:
     """Корреляция между компонентами"""
+
     type: str  # cascade | root_cause_suspected
     source: str
     related: list[str]
@@ -83,6 +88,7 @@ class Correlation:
 @dataclass
 class DiagnosticContext:
     """Контекст диагностики"""
+
     timestamp: str
     host_id: str
     components: list[ComponentState]
@@ -91,15 +97,16 @@ class DiagnosticContext:
 
 class PluginConfig(dict):
     """Конфигурация плагина — наследуем dict для гибкости"""
+
     pass
 
 
 class HealthStatus:
     """Статус health-check плагина"""
-    
+
     def __init__(self, status: Status = Status.UNKNOWN, message: str = ""):
         self.status = status
         self.message = message
-    
+
     def is_healthy(self) -> bool:
         return self.status == Status.HEALTHY

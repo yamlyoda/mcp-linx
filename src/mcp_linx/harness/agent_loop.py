@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastmcp import FastMCP
@@ -31,12 +31,16 @@ class AgentLoop(ABC):
     """
 
     @abstractmethod
-    async def setup(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
+    async def setup(
+        self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
+    ) -> None:
         """Настройка MCP сервера перед запуском."""
         ...
 
     @abstractmethod
-    async def run(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
+    async def run(
+        self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
+    ) -> None:
         """Запуск основного цикла обработки."""
         ...
 
@@ -59,7 +63,9 @@ class DefaultAgentLoop(AgentLoop):
         self._rate_limiter: RateLimiter | None = None
         self._config: dict[str, Any] | None = None
 
-    async def setup(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
+    async def setup(
+        self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
+    ) -> None:
         """Настройка MCP сервера."""
         from mcp_linx.context_aggregator import ContextAggregator
 
@@ -87,7 +93,9 @@ class DefaultAgentLoop(AgentLoop):
 
         logger.info("MCP server setup complete")
 
-    async def run(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
+    async def run(
+        self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
+    ) -> None:
         """Запуск MCP сервера."""
         logger.info("Starting MCP server...")
         await mcp.run_async()
@@ -132,7 +140,7 @@ class DefaultAgentLoop(AgentLoop):
                 ComponentState(
                     plugin_id=plugin_id,
                     status=health.status,
-                    last_checked=datetime.now(timezone.utc).isoformat(),
+                    last_checked=datetime.now(UTC).isoformat(),
                     issues=(
                         [health.message]
                         if health.status not in (Status.HEALTHY, Status.UNKNOWN)
@@ -181,7 +189,7 @@ class DefaultAgentLoop(AgentLoop):
                     component_state = ComponentState(
                         plugin_id=plugin.id,
                         status=result.status if hasattr(result, "status") else Status.UNKNOWN,
-                        last_checked=datetime.now(timezone.utc).isoformat(),
+                        last_checked=datetime.now(UTC).isoformat(),
                         issues=result.suggestions if hasattr(result, "suggestions") else [],
                     )
                     context_aggregator.add_component(component_state)
@@ -213,7 +221,10 @@ class DefaultAgentLoop(AgentLoop):
         """Регистрация системных инструментов."""
         context_aggregator = self._context_aggregator
 
-        @mcp.tool(name="get_diagnostic_context", description="Получить полный диагностический контекст со всеми компонентами и корреляциями")
+        @mcp.tool(
+            name="get_diagnostic_context",
+            description="Получить полный диагностический контекст со всеми компонентами и корреляциями",
+        )
         async def get_diagnostic_context() -> dict[str, Any]:
             context = context_aggregator.build_context()
             return {
@@ -256,7 +267,7 @@ class DefaultAgentLoop(AgentLoop):
                     ComponentState(
                         plugin_id=plugin_id,
                         status=health.status,
-                        last_checked=datetime.now(timezone.utc).isoformat(),
+                        last_checked=datetime.now(UTC).isoformat(),
                         issues=(
                             [health.message]
                             if health.status not in (Status.HEALTHY, Status.UNKNOWN)
@@ -266,10 +277,11 @@ class DefaultAgentLoop(AgentLoop):
                 )
 
             return {
-                "status": "healthy" if all(r.status.value == "healthy" for r in results.values()) else "degraded",
+                "status": "healthy"
+                if all(r.status.value == "healthy" for r in results.values())
+                else "degraded",
                 "results": {
-                    k: {"status": r.status.value, "message": r.message}
-                    for k, r in results.items()
+                    k: {"status": r.status.value, "message": r.message} for k, r in results.items()
                 },
             }
 
@@ -283,7 +295,9 @@ class StreamingAgentLoop(DefaultAgentLoop):
     Полезен для длительных операций (логи, мониторинг).
     """
 
-    async def run(self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]) -> None:
+    async def run(
+        self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
+    ) -> None:
         """Запуск с поддержкой потоковой передачи."""
         logger.info("Starting streaming MCP server...")
         # В будущем можно добавить SSE или WebSocket транспорт

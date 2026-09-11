@@ -32,9 +32,12 @@ class TestLinuxTools:
         from mcp_linx.plugins.linux.tools import linux_host_stats
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(LinuxPlugin, {
-            "_run_command": {"stdout": "", "stderr": "boom", "returncode": 1},
-        })
+        plugin = _make_plugin(
+            LinuxPlugin,
+            {
+                "_run_command": {"stdout": "", "stderr": "boom", "returncode": 1},
+            },
+        )
         result = await linux_host_stats(plugin, {})
         # linux_host_stats не падает целиком: ошибки пишутся в поля данных
         assert result.status == Status.HEALTHY
@@ -47,9 +50,12 @@ class TestLinuxTools:
         from mcp_linx.plugins.linux.tools import linux_logs
         from mcp_linx.types import Status
 
-        plugin = _make_plugin(LinuxPlugin, {
-            "_run_command": {"stdout": "", "stderr": "", "returncode": 0},
-        })
+        plugin = _make_plugin(
+            LinuxPlugin,
+            {
+                "_run_command": {"stdout": "", "stderr": "", "returncode": 0},
+            },
+        )
         for bad in ("../../etc/shadow", "syslog; cat /etc/passwd", "a/b"):
             result = await linux_logs(plugin, {"log_type": bad})
             assert result.status == Status.ERROR, f"log_type={bad} должен быть заблокирован"
@@ -64,9 +70,11 @@ class TestLinuxTools:
 
         captured = {}
         plugin = MagicMock(spec=LinuxPlugin)
+
         async def fake_run(command, timeout=30):
             captured["command"] = command
             return {"stdout": "line1\n", "stderr": "", "returncode": 0}
+
         plugin._run_command = fake_run
 
         result = await linux_logs(plugin, {"log_type": "dpkg.log", "lines": 10})
@@ -141,16 +149,19 @@ class TestNginxUpstream:
     async def test_upstream_all_healthy(self):
         """Все upstream серверы доступны — status ok"""
         from unittest.mock import AsyncMock
+
         from mcp_linx.plugins.nginx import NginxPlugin
         from mcp_linx.plugins.nginx.tools import nginx_upstream
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=NginxPlugin)
-        plugin._run_command = AsyncMock(return_value={
-            "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}\n",
-            "stderr": "",
-            "returncode": 0,
-        })
+        plugin._run_command = AsyncMock(
+            return_value={
+                "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        )
 
         mock_resp = AsyncMock()
         mock_resp.status_code = 200
@@ -161,6 +172,7 @@ class TestNginxUpstream:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         import unittest.mock as um
+
         with um.patch("httpx.AsyncClient", return_value=mock_client):
             result = await nginx_upstream(plugin, {})
 
@@ -172,16 +184,19 @@ class TestNginxUpstream:
     async def test_upstream_with_dead_server(self):
         """Один из upstream недоступен — status degraded"""
         from unittest.mock import AsyncMock
+
         from mcp_linx.plugins.nginx import NginxPlugin
         from mcp_linx.plugins.nginx.tools import nginx_upstream
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=NginxPlugin)
-        plugin._run_command = AsyncMock(return_value={
-            "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:9999;\n}\n",
-            "stderr": "",
-            "returncode": 0,
-        })
+        plugin._run_command = AsyncMock(
+            return_value={
+                "stdout": "upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:9999;\n}\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        )
 
         mock_resp_ok = AsyncMock()
         mock_resp_ok.status_code = 200
@@ -195,6 +210,7 @@ class TestNginxUpstream:
         mock_client.get = AsyncMock(side_effect=[mock_resp_ok, mock_resp_fail])
 
         import unittest.mock as um
+
         with um.patch("httpx.AsyncClient", return_value=mock_client):
             result = await nginx_upstream(plugin, {})
 
@@ -206,16 +222,19 @@ class TestNginxUpstream:
     async def test_upstream_unix_socket_skipped(self):
         """unix-socket upstream пропускается (недоступен по HTTP)"""
         from unittest.mock import AsyncMock
+
         from mcp_linx.plugins.nginx import NginxPlugin
         from mcp_linx.plugins.nginx.tools import nginx_upstream
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=NginxPlugin)
-        plugin._run_command = AsyncMock(return_value={
-            "stdout": "upstream backend {\n    server unix:/tmp/backend.sock;\n}\n",
-            "stderr": "",
-            "returncode": 0,
-        })
+        plugin._run_command = AsyncMock(
+            return_value={
+                "stdout": "upstream backend {\n    server unix:/tmp/backend.sock;\n}\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        )
 
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -223,6 +242,7 @@ class TestNginxUpstream:
         mock_client.get = AsyncMock()
 
         import unittest.mock as um
+
         with um.patch("httpx.AsyncClient", return_value=mock_client):
             result = await nginx_upstream(plugin, {})
 
@@ -240,13 +260,23 @@ class TestNginxConfig:
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=NginxPlugin)
-        plugin._run_command = AsyncMock(side_effect=[
-            {"stdout": "nginx: configuration file test is successful\n", "stderr": "", "returncode": 0},
-            {"stdout": "worker_processes auto;\n", "stderr": "", "returncode": 0},
-            {"stdout": "sites-enabled/default\n", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "worker_processes auto;\nworker_connections 1024;\n", "stderr": "", "returncode": 0},
-        ])
+        plugin._run_command = AsyncMock(
+            side_effect=[
+                {
+                    "stdout": "nginx: configuration file test is successful\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "worker_processes auto;\n", "stderr": "", "returncode": 0},
+                {"stdout": "sites-enabled/default\n", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {
+                    "stdout": "worker_processes auto;\nworker_connections 1024;\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+            ]
+        )
 
         result = await nginx_config(plugin, {})
         assert result.status == Status.HEALTHY
@@ -260,13 +290,15 @@ class TestNginxConfig:
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=NginxPlugin)
-        plugin._run_command = AsyncMock(side_effect=[
-            {"stdout": "", "stderr": "nginx: [emerg] unexpected end of file", "returncode": 1},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "Not found", "stderr": "", "returncode": 0},
-        ])
+        plugin._run_command = AsyncMock(
+            side_effect=[
+                {"stdout": "", "stderr": "nginx: [emerg] unexpected end of file", "returncode": 1},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "Not found", "stderr": "", "returncode": 0},
+            ]
+        )
 
         result = await nginx_config(plugin, {})
         assert result.status == Status.HEALTHY
@@ -281,14 +313,24 @@ class TestLinuxFirewall:
         from mcp_linx.types import Status
 
         plugin = _make_plugin(LinuxPlugin, {})
-        plugin._run_command = AsyncMock(side_effect=[
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "0: from all lookup local\n32766: from all lookup main\n", "stderr": "", "returncode": 0},
-            {"stdout": "broadcast 127.0.0.0 dev lo table local\n", "stderr": "", "returncode": 0},
-            {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
-        ])
+        plugin._run_command = AsyncMock(
+            side_effect=[
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {
+                    "stdout": "0: from all lookup local\n32766: from all lookup main\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {
+                    "stdout": "broadcast 127.0.0.0 dev lo table local\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
+            ]
+        )
         result = await linux_firewall(plugin, {})
         assert result.status == Status.HEALTHY
         assert result.data["marks"] == []
@@ -300,16 +342,25 @@ class TestLinuxFirewall:
         from mcp_linx.types import Status
 
         plugin = _make_plugin(LinuxPlugin, {})
-        plugin._run_command = AsyncMock(side_effect=[
-            {"stdout": "table inet netpolicy {\n chain output {\n meta skuid www-data tcp dport 8080 meta mark set 0x64\n }\n}\n",
-             "stderr": "", "returncode": 0},
-            {"stdout": "100: from all fwmark 0x64 lookup 100\n", "stderr": "", "returncode": 0},
-            {"stdout": "blackhole default\n", "stderr": "", "returncode": 0},
-            {"stdout": "broadcast 127.0.0.0 dev lo table local\n", "stderr": "", "returncode": 0},
-            {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
-            {"stdout": "", "stderr": "", "returncode": 0},
-            {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
-        ])
+        plugin._run_command = AsyncMock(
+            side_effect=[
+                {
+                    "stdout": "table inet netpolicy {\n chain output {\n meta skuid www-data tcp dport 8080 meta mark set 0x64\n }\n}\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "100: from all fwmark 0x64 lookup 100\n", "stderr": "", "returncode": 0},
+                {"stdout": "blackhole default\n", "stderr": "", "returncode": 0},
+                {
+                    "stdout": "broadcast 127.0.0.0 dev lo table local\n",
+                    "stderr": "",
+                    "returncode": 0,
+                },
+                {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
+                {"stdout": "", "stderr": "", "returncode": 0},
+                {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
+            ]
+        )
         result = await linux_firewall(plugin, {})
         assert result.status == Status.DEGRADED
         assert result.data["marks"][0]["mark"] == "0x64"

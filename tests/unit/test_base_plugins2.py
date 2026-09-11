@@ -15,10 +15,12 @@ class TestNginxStubStatusParsing:
         from mcp_linx.plugins.nginx.tools import nginx_stub_status
         from mcp_linx.types import Status
 
-        body = ("Active connections: 12\n"
-                "server accepts handled requests\n"
-                " 100 100 250\n"
-                "Reading: 0 Writing: 2 Waiting: 10\n")
+        body = (
+            "Active connections: 12\n"
+            "server accepts handled requests\n"
+            " 100 100 250\n"
+            "Reading: 0 Writing: 2 Waiting: 10\n"
+        )
         resp = httpx.Response(200, text=body, request=httpx.Request("GET", "http://x"))
         plugin = MagicMock(spec=NginxPlugin)
         plugin._config = {"stub_status_url": "http://127.0.0.1/nginx_status"}
@@ -57,10 +59,12 @@ class TestDockerPruneSafety:
         from mcp_linx.types import Status
 
         plugin = MagicMock(spec=DockerPlugin)
-        plugin.list_containers = AsyncMock(return_value=[
-            {"id": "a1", "name": "old", "status": "exited", "image": "nginx"},
-            {"id": "b2", "name": "web", "status": "running", "image": "app"},
-        ])
+        plugin.list_containers = AsyncMock(
+            return_value=[
+                {"id": "a1", "name": "old", "status": "exited", "image": "nginx"},
+                {"id": "b2", "name": "web", "status": "running", "image": "app"},
+            ]
+        )
         result = await docker_prune(plugin, {})
         assert result.status == Status.HEALTHY
         assert result.data["mode"] == "dry-run"

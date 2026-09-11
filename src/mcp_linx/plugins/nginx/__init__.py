@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
-from mcp_linx.security import SecurityGuard
-from mcp_linx.types import HealthStatus, PluginConfig, Status, ToolResult
 from mcp_linx.adapters.base import BaseAdapter, LocalAdapter
 from mcp_linx.adapters.ssh import SSHAdapter
+from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
+from mcp_linx.security import SecurityGuard
+from mcp_linx.types import HealthStatus, PluginConfig, Status
+from mcp_linx.types import ToolResult as ToolResult
 
 
 class NginxPlugin(DiagnosticPlugin):
@@ -26,11 +27,11 @@ class NginxPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.nginx.tools import (
-            nginx_status,
-            nginx_logs,
             nginx_config,
-            nginx_upstream,
+            nginx_logs,
+            nginx_status,
             nginx_stub_status,
+            nginx_upstream,
         )
 
         return [
@@ -38,7 +39,11 @@ class NginxPlugin(DiagnosticPlugin):
             PluginTool("nginx_logs", "Чтение error и access логов Nginx", nginx_logs),
             PluginTool("nginx_config", "Проверка конфигурации Nginx", nginx_config),
             PluginTool("nginx_upstream", "Статус upstream серверов", nginx_upstream),
-            PluginTool("nginx_stub_status", "HTTP-проверка stub_status: active connections, requests, reading/writing/waiting", nginx_stub_status),
+            PluginTool(
+                "nginx_stub_status",
+                "HTTP-проверка stub_status: active connections, requests, reading/writing/waiting",
+                nginx_stub_status,
+            ),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -54,13 +59,19 @@ class NginxPlugin(DiagnosticPlugin):
 
         sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
 
-        self._security = SecurityGuard({
-            "readonly": bool(sec.get("readonly", True)),
-            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 10000))),
-            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 500))),
-            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 30))),
-            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
-        })
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(
+                    sec.get("max_command_output_size", config.get("max_command_output_size", 10000))
+                ),
+                "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 500))),
+                "command_timeout_seconds": int(
+                    sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 30))
+                ),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
 
         await self._adapter.connect()
 

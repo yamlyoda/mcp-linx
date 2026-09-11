@@ -8,9 +8,9 @@
 """
 
 from mcp_linx.harness.agent_loop import AgentLoop, DefaultAgentLoop, StreamingAgentLoop
-from mcp_linx.harness.plugin_manager import PluginManager, discover_plugins
-from mcp_linx.harness.sandbox import Sandbox, LocalSandbox, DockerSandbox
 from mcp_linx.harness.context import ContextCompactor, SlidingWindowCompactor
+from mcp_linx.harness.plugin_manager import PluginManager, discover_plugins
+from mcp_linx.harness.sandbox import DockerSandbox, LocalSandbox, Sandbox
 
 __all__ = [
     "AgentLoop",

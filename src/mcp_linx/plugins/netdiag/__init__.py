@@ -13,7 +13,6 @@ from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
 from mcp_linx.security import SecurityGuard
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 
-
 # Строгий префикс-лист для привилегированных проб (только чтение/сниффинг с лимитами).
 # Полные команды дополнительно валидируются в tools (host/user/iface regex, лимиты).
 _PRIVILEGED_PREFIXES = (
@@ -38,12 +37,12 @@ class NetdiagPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.netdiag.tools import (
-            http_check,
-            tls_check,
             dns_resolve,
+            http_check,
             tcp_connect,
             tcp_connect_as,
             tcpdump_probe,
+            tls_check,
         )
 
         return [
@@ -51,8 +50,16 @@ class NetdiagPlugin(DiagnosticPlugin):
             PluginTool("tls_check", "TLS сертификат: expiry, chain, issuer", tls_check),
             PluginTool("dns_resolve", "DNS резолвинг A/AAAA/CNAME/MX", dns_resolve),
             PluginTool("tcp_connect", "TCP connect к host:port с замером времени", tcp_connect),
-            PluginTool("tcp_connect_as", "TCP-проба от имени сервисного пользователя (per-uid фильтры, требует privileged_tools)", tcp_connect_as),
-            PluginTool("tcpdump_probe", "Короткий tcpdump-срез host:port (требует privileged_tools)", tcpdump_probe),
+            PluginTool(
+                "tcp_connect_as",
+                "TCP-проба от имени сервисного пользователя (per-uid фильтры, требует privileged_tools)",
+                tcp_connect_as,
+            ),
+            PluginTool(
+                "tcpdump_probe",
+                "Короткий tcpdump-срез host:port (требует privileged_tools)",
+                tcpdump_probe,
+            ),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -65,13 +72,19 @@ class NetdiagPlugin(DiagnosticPlugin):
         else:
             self._adapter = LocalAdapter({})
         sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
-        self._security = SecurityGuard({
-            "readonly": bool(sec.get("readonly", True)),
-            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 10000))),
-            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
-            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 15))),
-            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
-        })
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(
+                    sec.get("max_command_output_size", config.get("max_command_output_size", 10000))
+                ),
+                "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
+                "command_timeout_seconds": int(
+                    sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 15))
+                ),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
         await self._adapter.connect()
 
     async def health_check(self) -> HealthStatus:
@@ -102,6 +115,7 @@ class NetdiagPlugin(DiagnosticPlugin):
         for pattern in self._security.DANGEROUS_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 from mcp_linx.security import SecurityError
+
                 raise SecurityError(f"Potentially dangerous command blocked: {command[:120]}")
         try:
             result = await self._adapter.execute_command(command, timeout)

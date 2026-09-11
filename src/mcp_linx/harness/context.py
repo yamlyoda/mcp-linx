@@ -57,7 +57,7 @@ class SlidingWindowCompactor(ContextCompactor):
         """Оставить только последние N сообщений."""
         if len(messages) <= self._max_messages:
             return messages
-        return messages[-self._max_messages:]
+        return messages[-self._max_messages :]
 
     def should_compact(self, messages: list[dict[str, Any]]) -> bool:
         """Проверить превышение лимита."""
@@ -111,8 +111,8 @@ class SummaryCompactor(ContextCompactor):
             return messages
 
         # Оставляем последние N сообщения как есть
-        recent = messages[-self._keep_recent:]
-        older = messages[:-self._keep_recent]
+        recent = messages[-self._keep_recent :]
+        older = messages[: -self._keep_recent]
 
         if self._summarize_older and older:
             # В реальности здесь был бы вызов LLM для суммаризации

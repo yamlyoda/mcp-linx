@@ -11,8 +11,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from mcp_linx.types import HealthStatus, PluginConfig, Status
 from mcp_linx.plugins.base import DiagnosticPlugin
+from mcp_linx.types import HealthStatus, PluginConfig, Status
 
 logger = logging.getLogger(__name__)
 
@@ -182,11 +182,13 @@ class PluginManager:
 
         for plugin_id, plugin in self._plugins.items():
             for tool in plugin.get_tools():
-                tools.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "plugin_id": plugin_id,
-                    "execute": tool.execute,
-                })
+                tools.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "plugin_id": plugin_id,
+                        "execute": tool.execute,
+                    }
+                )
 
         return tools

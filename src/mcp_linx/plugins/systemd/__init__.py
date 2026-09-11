@@ -23,19 +23,27 @@ class SystemdPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.systemd.tools import (
-            service_status,
-            failed_units,
-            service_logs,
             boot_analysis,
+            failed_units,
             service_ip_filter,
+            service_logs,
+            service_status,
         )
 
         return [
-            PluginTool("service_status", "Статус systemd юнита (systemctl status/is-active)", service_status),
+            PluginTool(
+                "service_status",
+                "Статус systemd юнита (systemctl status/is-active)",
+                service_status,
+            ),
             PluginTool("failed_units", "Список failed юнитов (systemctl --failed)", failed_units),
             PluginTool("service_logs", "Логи сервиса через journalctl -u", service_logs),
             PluginTool("boot_analysis", "Анализ времени загрузки (systemd-analyze)", boot_analysis),
-            PluginTool("service_ip_filter", "Эффективный IP-фильтр юнита: unit-файлы + eBPF/bpftool (ground truth)", service_ip_filter),
+            PluginTool(
+                "service_ip_filter",
+                "Эффективный IP-фильтр юнита: unit-файлы + eBPF/bpftool (ground truth)",
+                service_ip_filter,
+            ),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -46,13 +54,19 @@ class SystemdPlugin(DiagnosticPlugin):
         else:
             self._adapter = LocalAdapter({})
         sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
-        self._security = SecurityGuard({
-            "readonly": bool(sec.get("readonly", True)),
-            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 10000))),
-            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
-            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 15))),
-            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
-        })
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(
+                    sec.get("max_command_output_size", config.get("max_command_output_size", 10000))
+                ),
+                "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
+                "command_timeout_seconds": int(
+                    sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 15))
+                ),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
         await self._adapter.connect()
 
     async def health_check(self) -> HealthStatus:

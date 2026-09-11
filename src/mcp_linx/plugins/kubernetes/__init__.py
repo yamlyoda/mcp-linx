@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from mcp_linx.adapters.base import BaseAdapter, LocalAdapter
 from mcp_linx.adapters.ssh import SSHAdapter
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
@@ -28,17 +26,19 @@ class KubernetesPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.kubernetes.tools import (
-            k8s_pods,
+            k8s_deployments,
+            k8s_describe,
             k8s_events,
             k8s_logs,
-            k8s_describe,
+            k8s_pods,
             k8s_top,
-            k8s_deployments,
         )
 
         return [
             PluginTool("k8s_pods", "Список подов с фазами и рестартами", k8s_pods),
-            PluginTool("k8s_events", "События кластера/неймспейса (kubectl get events)", k8s_events),
+            PluginTool(
+                "k8s_events", "События кластера/неймспейса (kubectl get events)", k8s_events
+            ),
             PluginTool("k8s_logs", "Логи пода (kubectl logs)", k8s_logs),
             PluginTool("k8s_describe", "Describe пода (conditions, events)", k8s_describe),
             PluginTool("k8s_top", "Ресурсы подов (kubectl top pods)", k8s_top),
@@ -56,19 +56,26 @@ class KubernetesPlugin(DiagnosticPlugin):
         else:
             self._adapter = LocalAdapter({})
         sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
-        self._security = SecurityGuard({
-            "readonly": bool(sec.get("readonly", True)),
-            "max_command_output_size": int(sec.get("max_command_output_size", config.get("max_command_output_size", 20000))),
-            "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
-            "command_timeout_seconds": int(sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 20))),
-            "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
-        })
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(
+                    sec.get("max_command_output_size", config.get("max_command_output_size", 20000))
+                ),
+                "max_log_lines": int(sec.get("max_log_lines", config.get("max_log_lines", 200))),
+                "command_timeout_seconds": int(
+                    sec.get("command_timeout_seconds", config.get("command_timeout_seconds", 20))
+                ),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
         await self._adapter.connect()
 
     async def health_check(self) -> HealthStatus:
         try:
             result = await self._run("kubectl version --client=true -o json", timeout=10)
             import json as _json
+
             if result["returncode"] == 0:
                 info = _json.loads(result["stdout"] or "{}")
                 ver = info.get("clientVersion", {}).get("gitVersion", "unknown")

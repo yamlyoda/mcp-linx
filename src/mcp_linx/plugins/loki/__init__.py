@@ -23,8 +23,8 @@ class LokiPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.loki.tools import (
-            log_search,
             log_labels,
+            log_search,
             log_tail,
         )
 

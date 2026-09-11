@@ -47,8 +47,7 @@ def sanitize_params(params: dict[str, Any] | None) -> dict[str, Any]:
             cleaned[key] = sanitize_params(value)
         elif isinstance(value, list):
             cleaned[key] = [
-                sanitize_params(item) if isinstance(item, dict) else item
-                for item in value
+                sanitize_params(item) if isinstance(item, dict) else item for item in value
             ]
         else:
             cleaned[key] = value
@@ -69,7 +68,7 @@ class AuditLogger:
         self._user_id = user_id
 
     @classmethod
-    def from_config(cls, config: dict[str, Any] | None) -> "AuditLogger":
+    def from_config(cls, config: dict[str, Any] | None) -> AuditLogger:
         """Собрать из секции telemetry конфига."""
         config = config or {}
         telemetry = config.get("telemetry", {}) if isinstance(config, dict) else {}
@@ -126,7 +125,7 @@ class AuditLogger:
 class Timer:
     """Простой контекстный менеджер для замера длительности."""
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         self.start = time.perf_counter()
         return self
 

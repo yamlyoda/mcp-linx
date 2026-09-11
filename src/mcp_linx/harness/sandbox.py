@@ -73,7 +73,7 @@ class LocalSandbox(Sandbox):
                 "returncode": proc.returncode,
                 "command": command,
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return {
@@ -127,7 +127,7 @@ class DockerSandbox(Sandbox):
                 "returncode": proc.returncode,
                 "command": command,
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return {
@@ -141,7 +141,8 @@ class DockerSandbox(Sandbox):
         """Проверить доступность Docker."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "version",
+                "docker",
+                "version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -157,7 +158,9 @@ class RemoteSandbox(Sandbox):
     Выполняет команды на удалённом хосте.
     """
 
-    def __init__(self, host: str, port: int = 22, username: str | None = None, key_file: str | None = None):
+    def __init__(
+        self, host: str, port: int = 22, username: str | None = None, key_file: str | None = None
+    ):
         self._host = host
         self._port = port
         self._username = username

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import suppress
 from typing import Any
 
 from mcp_linx.plugins.nginx import NginxPlugin
@@ -18,31 +19,37 @@ _ALLOWED_LOG_NAMES = {"access.log", "error.log"}
 async def nginx_config(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Проверка конфигурации Nginx"""
     results: dict[str, Any] = {}
-    
+
     # Тест конфигурации
     test_result = await plugin._run_command("nginx -t 2>&1")
     results["config_test_output"] = test_result.get("stdout", test_result.get("stderr", ""))
     results["config_test_ok"] = test_result["returncode"] == 0
-    
+
     # Основной конфиг
-    conf_result = await plugin._run_command("grep -v '^#' /etc/nginx/nginx.conf | grep -v '^$' | head -50")
+    conf_result = await plugin._run_command(
+        "grep -v '^#' /etc/nginx/nginx.conf | grep -v '^$' | head -50"
+    )
     results["main_config"] = conf_result.get("stdout", "Not found")
-    
+
     # Сайты
-    sites_result = await plugin._run_command("ls -la /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null || echo 'No sites configured'")
+    sites_result = await plugin._run_command(
+        "ls -la /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null || echo 'No sites configured'"
+    )
     results["sites"] = sites_result.get("stdout", "Not found")
-    
+
     # SSL
-    ssl_result = await plugin._run_command("grep -r 'ssl_certificate' /etc/nginx/ 2>/dev/null | head -10 || echo 'No SSL configured'")
+    ssl_result = await plugin._run_command(
+        "grep -r 'ssl_certificate' /etc/nginx/ 2>/dev/null | head -10 || echo 'No SSL configured'"
+    )
     results["ssl"] = ssl_result.get("stdout", "Not found")
-    
+
     # Worker settings
-    worker_result = await plugin._run_command("grep -E 'worker_processes|worker_connections|worker_rlimit' /etc/nginx/nginx.conf 2>/dev/null || echo 'Not found'")
+    worker_result = await plugin._run_command(
+        "grep -E 'worker_processes|worker_connections|worker_rlimit' /etc/nginx/nginx.conf 2>/dev/null || echo 'Not found'"
+    )
     results["worker_settings"] = worker_result.get("stdout", "Not found")
-    
+
     return ToolResult.ok(results)
-
-
 
 
 async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -111,7 +118,7 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
         # строка вида: "server 127.0.0.1:3000 weight=1;" или "server backend:8080;"
         if not line.startswith("server"):
             continue
-        tokens = line[len("server"):].split()
+        tokens = line[len("server") :].split()
         if not tokens:
             continue
         addr = tokens[0].rstrip(";,").strip()
@@ -129,12 +136,14 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
         for server in upstream_servers[:max_servers]:
             # unix:/path — недоступен по HTTP, только skip
             if server.startswith("unix:"):
-                checks.append({
-                    "server": server,
-                    "type": "socket",
-                    "status": "skipped",
-                    "note": "unix-socket: HTTP health check not applicable",
-                })
+                checks.append(
+                    {
+                        "server": server,
+                        "type": "socket",
+                        "status": "skipped",
+                        "note": "unix-socket: HTTP health check not applicable",
+                    }
+                )
                 continue
 
             # нормализуем URL
@@ -182,7 +191,6 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
     return ToolResult.ok(results)
 
 
-
 async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """HTTP-проверка stub_status: active connections, requests, reading/writing/waiting
 
@@ -214,13 +222,12 @@ async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> Tool
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("Active connections"):
-            try:
+            with suppress(ValueError, IndexError):
                 data["active_connections"] = int(line.split(":", 1)[1].strip())
-            except (ValueError, IndexError):
-                pass
         elif line.lower().startswith("reading"):
             # Формат: "Reading: 0 Writing: 1 Waiting: 4"
             import re as _re
+
             for key in ("reading", "writing", "waiting"):
                 m = _re.search(rf"{key}:\s*(\d+)", line, _re.IGNORECASE)
                 if m:
@@ -230,7 +237,9 @@ async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> Tool
             parts = line.split()
             if len(parts) == 3 and all(p.isdigit() for p in parts):
                 data["accepted"], data["handled"], data["requests"] = (
-                    int(parts[0]), int(parts[1]), int(parts[2]),
+                    int(parts[0]),
+                    int(parts[1]),
+                    int(parts[2]),
                 )
 
     if isinstance(data.get("active_connections"), int):
@@ -247,37 +256,36 @@ async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> Tool
     return ToolResult.ok(data)
 
 
-
 async def nginx_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Статус службы Nginx и процессов"""
     results: dict[str, Any] = {}
-    
+
     # Статус службы
     systemctl_result = await plugin._run_command("systemctl status nginx --no-pager")
     results["systemctl_status"] = systemctl_result.get("stdout", "")
     results["systemctl_code"] = systemctl_result.get("returncode", -1)
-    
+
     # Конфигурационный тест
     config_test_result = await plugin._run_command("nginx -t 2>&1")
     results["config_test"] = config_test_result.get("stdout", config_test_result.get("stderr", ""))
     results["config_test_ok"] = config_test_result["returncode"] == 0
-    
+
     # Версия
     version_result = await plugin._run_command("nginx -v 2>&1")
     results["version"] = version_result.get("stderr", version_result.get("stdout", ""))
-    
+
     # Работающие процессы
     ps_result = await plugin._run_command("ps aux | grep '[n]ginx'")
     results["processes"] = ps_result.get("stdout", "")
     results["process_count"] = ps_result.get("stdout", "").count("\n")
-    
+
     # Конфигурация worker_processes
-    worker_result = await plugin._run_command("grep -E 'worker_processes|worker_connections' /etc/nginx/nginx.conf 2>/dev/null || echo 'Config not found'")
+    worker_result = await plugin._run_command(
+        "grep -E 'worker_processes|worker_connections' /etc/nginx/nginx.conf 2>/dev/null || echo 'Config not found'"
+    )
     results["worker_config"] = worker_result.get("stdout", "Not found")
-    
+
     return ToolResult.ok(results)
-
-
 
 
 async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -285,7 +293,9 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     log_type = params.get("log_type", "error")
     lines = min(int(params.get("lines", 100)), 500)
 
-    config_path = plugin._config.get("log_path", "/var/log/nginx") if plugin._config else "/var/log/nginx"
+    config_path = (
+        plugin._config.get("log_path", "/var/log/nginx") if plugin._config else "/var/log/nginx"
+    )
     access_log = plugin._config.get("access_log", "access.log") if plugin._config else "access.log"
     error_log = plugin._config.get("error_log", "error.log") if plugin._config else "error.log"
 
@@ -311,47 +321,56 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     elif log_type == "access_full":
         log_file = f"{config_path}/{access_log}"
     else:
-        return ToolResult.error(f"Invalid log_type '{log_type}'. Allowed: error, access, error_full, access_full")
+        return ToolResult.error(
+            f"Invalid log_type '{log_type}'. Allowed: error, access, error_full, access_full"
+        )
 
     command = f"tail -n {lines} {log_file}"
     result = await plugin._run_command(command)
-    
+
     if result["returncode"] != 0:
         return ToolResult.error(f"Failed to read logs: {result['stderr']}")
-    
+
     log_lines = result["stdout"].split("\n")
-    
+
     # Анализ логов
     if log_type in ["error", "error_full"]:
-        error_count = sum(1 for line in log_lines if any(kw in line.lower() for kw in ["error", "fail", "critical"]))
+        error_count = sum(
+            1
+            for line in log_lines
+            if any(kw in line.lower() for kw in ["error", "fail", "critical"])
+        )
         timeout_count = sum(1 for line in log_lines if "timeout" in line.lower())
         refused_count = sum(1 for line in log_lines if "connection refused" in line.lower())
-        
-        return ToolResult.ok({
-            "logs": result["stdout"],
-            "lines": len(log_lines),
-            "analysis": {
-                "error_count": error_count,
-                "timeout_count": timeout_count,
-                "connection_refused_count": refused_count,
-                "upstream_errors": timeout_count + refused_count,
-            },
-        })
+
+        return ToolResult.ok(
+            {
+                "logs": result["stdout"],
+                "lines": len(log_lines),
+                "analysis": {
+                    "error_count": error_count,
+                    "timeout_count": timeout_count,
+                    "connection_refused_count": refused_count,
+                    "upstream_errors": timeout_count + refused_count,
+                },
+            }
+        )
     else:
         # Access log analysis
         status_2xx = sum(1 for line in log_lines if " 2" in line)
         status_3xx = sum(1 for line in log_lines if " 3" in line)
         status_4xx = sum(1 for line in log_lines if " 4" in line)
         status_5xx = sum(1 for line in log_lines if " 5" in line)
-        
-        return ToolResult.ok({
-            "logs": result["stdout"],
-            "lines": len(log_lines),
-            "analysis": {
-                "status_2xx": status_2xx,
-                "status_3xx": status_3xx,
-                "status_4xx": status_4xx,
-                "status_5xx": status_5xx,
-            },
-        })
 
+        return ToolResult.ok(
+            {
+                "logs": result["stdout"],
+                "lines": len(log_lines),
+                "analysis": {
+                    "status_2xx": status_2xx,
+                    "status_3xx": status_3xx,
+                    "status_4xx": status_4xx,
+                    "status_5xx": status_5xx,
+                },
+            }
+        )

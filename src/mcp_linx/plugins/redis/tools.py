@@ -68,23 +68,27 @@ async def redis_clients(plugin, params: dict[str, Any]) -> ToolResult:
                 if "=" in token:
                     k, v = token.split("=", 1)
                     fields[k] = v
-            clients.append({
-                "id": fields.get("id", ""),
-                "addr": fields.get("addr", ""),
-                "name": fields.get("name", ""),
-                "age": fields.get("age", ""),
-                "idle": fields.get("idle", ""),
-                "cmd": fields.get("cmd", ""),
-                "db": fields.get("db", ""),
-            })
+            clients.append(
+                {
+                    "id": fields.get("id", ""),
+                    "addr": fields.get("addr", ""),
+                    "name": fields.get("name", ""),
+                    "age": fields.get("age", ""),
+                    "idle": fields.get("idle", ""),
+                    "cmd": fields.get("cmd", ""),
+                    "db": fields.get("db", ""),
+                }
+            )
         blocked_cmds = {"blpop", "brpop", "blmove", "bzpopmin", "bzpopmax"}
         blocked = sum(1 for c in clients if c["cmd"] in blocked_cmds)
-        return ToolResult.ok({
-            "total": len(lines),
-            "shown": len(clients),
-            "blocked_clients": blocked,
-            "clients": clients,
-        })
+        return ToolResult.ok(
+            {
+                "total": len(lines),
+                "shown": len(clients),
+                "blocked_clients": blocked,
+                "clients": clients,
+            }
+        )
     except Exception as e:
         return ToolResult.error(str(e))
 
@@ -101,8 +105,11 @@ async def redis_slowlog(plugin, params: dict[str, Any]) -> ToolResult:
         if entries:
             suggestions.append("Есть медленные команды — проверьте hot keys и O(N) операции")
         status = Status.HEALTHY if not entries else Status.DEGRADED
-        return ToolResult(status=status, data={"count": len(entries), "entries": entries[:count]},
-                          suggestions=suggestions)
+        return ToolResult(
+            status=status,
+            data={"count": len(entries), "entries": entries[:count]},
+            suggestions=suggestions,
+        )
     except Exception as e:
         return ToolResult.error(str(e))
 

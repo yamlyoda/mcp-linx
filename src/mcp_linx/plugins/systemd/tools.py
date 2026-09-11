@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ipaddress
-import json
 import re
 import shlex
 from typing import Any
@@ -47,7 +46,7 @@ def _parse_bpftool_map_dump(text: str) -> list[str]:
         if not line.startswith("key:"):
             continue
         # key: XX XX ...  value: ...
-        key_part = line[len("key:"):].split("value:")[0].strip()
+        key_part = line[len("key:") :].split("value:")[0].strip()
         hexbytes = bytes(int(x, 16) for x in key_part.split() if len(x) == 2)
         if len(hexbytes) < 4:
             continue
@@ -93,7 +92,9 @@ async def failed_units(plugin, params: dict[str, Any]) -> ToolResult:
         units = [ln.strip() for ln in result["stdout"].splitlines() if ln.strip()]
         data = {"count": len(units), "units": units}
         if units:
-            return ToolResult.degraded(data, [f"{len(units)} failed units — проверьте service_logs"])
+            return ToolResult.degraded(
+                data, [f"{len(units)} failed units — проверьте service_logs"]
+            )
         return ToolResult.ok(data)
     except Exception as e:
         return ToolResult.error(str(e))
@@ -116,7 +117,9 @@ async def service_logs(plugin, params: dict[str, Any]) -> ToolResult:
         if result["returncode"] != 0:
             return ToolResult.error(result["stderr"][:500] or "journalctl failed")
         text = result["stdout"]
-        errors = sum(1 for ln in text.splitlines() if "error" in ln.lower() or "failed" in ln.lower())
+        errors = sum(
+            1 for ln in text.splitlines() if "error" in ln.lower() or "failed" in ln.lower()
+        )
         return ToolResult.ok({"unit": unit, "lines": lines, "error_hits": errors, "logs": text})
     except Exception as e:
         return ToolResult.error(str(e))
@@ -131,10 +134,12 @@ async def boot_analysis(plugin, params: dict[str, Any]) -> ToolResult:
         if blame["returncode"] != 0:
             return ToolResult.error(blame["stderr"][:500] or "systemd-analyze failed")
         lines = [ln.strip() for ln in blame["stdout"].splitlines() if ln.strip()][:top]
-        return ToolResult.ok({
-            "summary": total["stdout"].strip(),
-            "slowest": lines,
-        })
+        return ToolResult.ok(
+            {
+                "summary": total["stdout"].strip(),
+                "slowest": lines,
+            }
+        )
     except Exception as e:
         return ToolResult.error(str(e))
 
@@ -179,8 +184,11 @@ async def service_ip_filter(plugin, params: dict[str, Any]) -> ToolResult:
         progs = await plugin._run("bpftool prog show 2>&1 | head -60", timeout=10)
         prog_text = progs["stdout"]
         data["progs_raw"] = prog_text[:3000]
-        unit_progs = [ln.strip() for ln in prog_text.splitlines()
-                      if "cgroup_skb" in ln and (unit.replace(".service", "") in ln or "sd_fw" in ln)]
+        unit_progs = [
+            ln.strip()
+            for ln in prog_text.splitlines()
+            if "cgroup_skb" in ln and (unit.replace(".service", "") in ln or "sd_fw" in ln)
+        ]
         data["unit_progs"] = unit_progs
 
         # 4. LPM-whitelist maps для юнита: bpftool map list → dump
@@ -193,10 +201,11 @@ async def service_ip_filter(plugin, params: dict[str, Any]) -> ToolResult:
         # Dump по именам map, связанных с юнитом
         for m in re.finditer(r"name\s+(\S*" + re.escape(short) + r"\S*|\S*sd_fw\S*)", map_text):
             map_name = m.group(1)
-            dump = await plugin._run(f"bpftool map dump name {shlex.quote(map_name)} 2>&1", timeout=10)
+            dump = await plugin._run(
+                f"bpftool map dump name {shlex.quote(map_name)} 2>&1", timeout=10
+            )
             cidrs = _parse_bpftool_map_dump(dump["stdout"])
-            dumped.append({"map": map_name, "cidrs": cidrs,
-                           "raw": dump["stdout"][:2000]})
+            dumped.append({"map": map_name, "cidrs": cidrs, "raw": dump["stdout"][:2000]})
             effective_allow.extend(cidrs)
         data["effective_allow"] = sorted(set(effective_allow))
         data["dumped_maps"] = dumped
@@ -213,7 +222,9 @@ async def service_ip_filter(plugin, params: dict[str, Any]) -> ToolResult:
         if not effective_allow and not declared.get("IPAddressAllow"):
             return ToolResult.ok({**data, "verdict": "no_ip_filter_detected"})
         if issues:
-            return ToolResult.degraded({**data, "verdict": "hidden_filter" if hidden else "filtered"}, issues)
+            return ToolResult.degraded(
+                {**data, "verdict": "hidden_filter" if hidden else "filtered"}, issues
+            )
         return ToolResult.ok({**data, "verdict": "filtered"})
     except Exception as e:
         return ToolResult.error(str(e))

@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import psycopg2
-from psycopg2 import sql
 
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
-from mcp_linx.types import HealthStatus, PluginConfig, Status, ToolResult
+from mcp_linx.types import HealthStatus, PluginConfig, Status
+from mcp_linx.types import ToolResult as ToolResult
 
 
 class PostgresPlugin(DiagnosticPlugin):
@@ -16,7 +16,9 @@ class PostgresPlugin(DiagnosticPlugin):
 
     id = "postgres"
     name = "PostgreSQL"
-    description = "Диагностика PostgreSQL: соединения, блокировки, медленные запросы, репликация, ресурсы"
+    description = (
+        "Диагностика PostgreSQL: соединения, блокировки, медленные запросы, репликация, ресурсы"
+    )
     version = "1.0.0"
 
     def __init__(self):
@@ -25,20 +27,26 @@ class PostgresPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.postgres.tools import (
+            pg_activity,
             pg_connections,
             pg_locks,
-            pg_slow_queries,
-            pg_activity,
-            pg_stats,
             pg_replication,
+            pg_slow_queries,
+            pg_stats,
             pg_tables,
         )
 
         return [
             PluginTool("pg_connections", "Активные подключения к PostgreSQL", pg_connections),
             PluginTool("pg_locks", "Блокировки и заблокированные запросы", pg_locks),
-            PluginTool("pg_slow_queries", "Медленные запросы (pg_stat_statements)", pg_slow_queries),
-            PluginTool("pg_activity", "Полная активность: текущие запросы, состояния, ожидания", pg_activity),
+            PluginTool(
+                "pg_slow_queries", "Медленные запросы (pg_stat_statements)", pg_slow_queries
+            ),
+            PluginTool(
+                "pg_activity",
+                "Полная активность: текущие запросы, состояния, ожидания",
+                pg_activity,
+            ),
             PluginTool("pg_stats", "Статистика: таблицы, индексы, базы данных", pg_stats),
             PluginTool("pg_replication", "Статус репликации (если настроена)", pg_replication),
             PluginTool("pg_tables", "Список таблиц с размерами и статистикой", pg_tables),
@@ -106,10 +114,12 @@ class PostgresPlugin(DiagnosticPlugin):
             if cur.description:
                 columns = [desc[0] for desc in cur.description]
                 rows = cur.fetchall()
-                return [dict(zip(columns, row)) for row in rows]
+                return [dict(zip(columns, row)) for row in rows]  # noqa: B905 — strict=False by design (len already equal)
             return []
 
-    async def _execute_query_one(self, query: str, params: tuple | None = None) -> dict[str, Any] | None:
+    async def _execute_query_one(
+        self, query: str, params: tuple | None = None
+    ) -> dict[str, Any] | None:
         """Выполнить SQL запрос и вернуть одну строку"""
         results = await self._execute_query(query, params)
         return results[0] if results else None

@@ -15,14 +15,16 @@ class TestPostgresIntegration:
 
         host, port = postgres_dsn
         plugin = PostgresPlugin()
-        await plugin.initialize({
-            "host": host,
-            "port": port,
-            "database": "testdb",
-            "user": "test",
-            "password": "testpass",
-            "ssl_mode": "disable",
-        })
+        await plugin.initialize(
+            {
+                "host": host,
+                "port": port,
+                "database": "testdb",
+                "user": "test",
+                "password": "testpass",
+                "ssl_mode": "disable",
+            }
+        )
         try:
             result = await pg_connections(plugin, {"limit": 10})
             assert result.status.value == "healthy"
@@ -37,14 +39,16 @@ class TestPostgresIntegration:
 
         host, port = postgres_dsn
         plugin = PostgresPlugin()
-        await plugin.initialize({
-            "host": host,
-            "port": port,
-            "database": "testdb",
-            "user": "test",
-            "password": "testpass",
-            "ssl_mode": "disable",
-        })
+        await plugin.initialize(
+            {
+                "host": host,
+                "port": port,
+                "database": "testdb",
+                "user": "test",
+                "password": "testpass",
+                "ssl_mode": "disable",
+            }
+        )
         try:
             result = await pg_stats(plugin, {})
             assert result.status.value == "healthy"
@@ -61,14 +65,16 @@ class TestPostgresIntegration:
 
         host, port = postgres_dsn
         plugin = PostgresPlugin()
-        await plugin.initialize({
-            "host": host,
-            "port": port,
-            "database": "testdb",
-            "user": "test",
-            "password": "testpass",
-            "ssl_mode": "disable",
-        })
+        await plugin.initialize(
+            {
+                "host": host,
+                "port": port,
+                "database": "testdb",
+                "user": "test",
+                "password": "testpass",
+                "ssl_mode": "disable",
+            }
+        )
         try:
             result = await pg_tables(plugin, {"schema": "public"})
             assert result.status.value == "healthy"
@@ -111,10 +117,12 @@ class TestRedisIntegration:
         from mcp_linx.types import Status
 
         plugin = RedisPlugin()
-        await plugin.initialize({
-            "host": "127.0.0.1",
-            "port": redis_port,
-        })
+        await plugin.initialize(
+            {
+                "host": "127.0.0.1",
+                "port": redis_port,
+            }
+        )
 
         try:
             result = await redis_ping(plugin, {})
@@ -131,10 +139,12 @@ class TestRedisIntegration:
         from mcp_linx.plugins.redis.tools import redis_info
 
         plugin = RedisPlugin()
-        await plugin.initialize({
-            "host": "127.0.0.1",
-            "port": redis_port,
-        })
+        await plugin.initialize(
+            {
+                "host": "127.0.0.1",
+                "port": redis_port,
+            }
+        )
         try:
             result = await redis_info(plugin, {"section": "server"})
             assert result.status.value == "healthy"

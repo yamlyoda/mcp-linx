@@ -8,7 +8,6 @@ from typing import Any
 from mcp_linx.plugins.linux import LinuxPlugin
 from mcp_linx.types import ToolResult
 
-
 # Ограниченный список разрешённых log_type для /var/log/ (защита от path traversal)
 _ALLOWED_LOG_FILES = {
     "dpkg.log",
@@ -60,18 +59,26 @@ async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
 
     log_lines = result["stdout"].split("\n")
 
-    error_count = sum(1 for line in log_lines if any(kw in line.lower() for kw in ["error", "fail", "fatal", "critical"]))
-    warning_count = sum(1 for line in log_lines if any(kw in line.lower() for kw in ["warn", "warning"]))
+    error_count = sum(
+        1
+        for line in log_lines
+        if any(kw in line.lower() for kw in ["error", "fail", "fatal", "critical"])
+    )
+    warning_count = sum(
+        1 for line in log_lines if any(kw in line.lower() for kw in ["warn", "warning"])
+    )
 
-    return ToolResult.ok({
-        "logs": result["stdout"],
-        "lines": len(log_lines),
-        "analysis": {
-            "error_count": error_count,
-            "warning_count": warning_count,
-            "info_count": len(log_lines) - error_count - warning_count,
-        },
-    })
+    return ToolResult.ok(
+        {
+            "logs": result["stdout"],
+            "lines": len(log_lines),
+            "analysis": {
+                "error_count": error_count,
+                "warning_count": warning_count,
+                "info_count": len(log_lines) - error_count - warning_count,
+            },
+        }
+    )
 
 
 async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -90,7 +97,9 @@ async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResu
     route_result = await plugin._run_command("ip route show")
     results["routes"] = route_result.get("stdout", "")
 
-    dns_result = await plugin._run_command("cat /etc/resolv.conf 2>/dev/null || echo 'No resolv.conf'")
+    dns_result = await plugin._run_command(
+        "cat /etc/resolv.conf 2>/dev/null || echo 'No resolv.conf'"
+    )
     results["dns"] = dns_result.get("stdout", "")
 
     return ToolResult.ok(results)
@@ -119,10 +128,19 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
     marks: list[dict[str, Any]] = []
     for ln in nft_text.splitlines():
         if "mark set" in ln:
-            m = _re.search(r"skuid\s+[\"']?(\S+?)[\"']?\s+.*?dport\s+(\d+).*?mark\s+set\s+(0x[0-9a-fA-F]+|\d+)", ln)
+            m = _re.search(
+                r"skuid\s+[\"']?(\S+?)[\"']?\s+.*?dport\s+(\d+).*?mark\s+set\s+(0x[0-9a-fA-F]+|\d+)",
+                ln,
+            )
             if m:
-                marks.append({"skuid": m.group(1), "dport": int(m.group(2)),
-                              "mark": m.group(3), "rule": ln.strip()[:200]})
+                marks.append(
+                    {
+                        "skuid": m.group(1),
+                        "dport": int(m.group(2)),
+                        "mark": m.group(3),
+                        "rule": ln.strip()[:200],
+                    }
+                )
             else:
                 m2 = _re.search(r"mark\s+set\s+(0x[0-9a-fA-F]+|\d+)", ln)
                 if m2:
@@ -145,7 +163,9 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
         if out and "Error" not in out:
             policy_routes.append({"table": tbl, "routes": out[:1500]})
             if "blackhole" in out.lower():
-                issues.append(f"Table {tbl} содержит blackhole — трафик с fwmark туда уходит в никуда")
+                issues.append(
+                    f"Table {tbl} содержит blackhole — трафик с fwmark туда уходит в никуда"
+                )
     results["policy_routes"] = policy_routes
 
     # 3. iptables fallback (read-only: -S/-L без изменений)
@@ -191,7 +211,7 @@ async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
 
     vm_result = await plugin._run_command("vmstat -s")
     if vm_result["returncode"] == 0:
-                results["vm_stats"] = vm_result["stdout"]
+        results["vm_stats"] = vm_result["stdout"]
 
     return ToolResult.ok(results)
 
@@ -227,7 +247,9 @@ async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolR
         "memory": "vm_stat | head -20" if is_macos else "free -h",
         "load": "sysctl -n vm.loadavg" if is_macos else "cat /proc/loadavg",
         "cpu_count": "sysctl -n hw.ncpu" if is_macos else "nproc",
-        "cpu_model": "sysctl -n machdep.cpu.brand_string" if is_macos else "cat /proc/cpuinfo | grep 'model name' | head -1",
+        "cpu_model": "sysctl -n machdep.cpu.brand_string"
+        if is_macos
+        else "cat /proc/cpuinfo | grep 'model name' | head -1",
     }
 
     results: dict[str, str] = {}
@@ -242,15 +264,17 @@ async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolR
         except Exception as e:
             results[key] = f"Error: {e}"
 
-    return ToolResult.ok({
-        "kernel": results.get("kernel", ""),
-        "uptime": results.get("uptime", ""),
-        "memory": results.get("memory", ""),
-        "load_avg": results.get("load", ""),
-        "cpu_count": results.get("cpu_count", ""),
-        "cpu_model": results.get("cpu_model", ""),
-        "platform": platform.platform(),
-    })
+    return ToolResult.ok(
+        {
+            "kernel": results.get("kernel", ""),
+            "uptime": results.get("uptime", ""),
+            "memory": results.get("memory", ""),
+            "load_avg": results.get("load", ""),
+            "cpu_count": results.get("cpu_count", ""),
+            "cpu_model": results.get("cpu_model", ""),
+            "platform": platform.platform(),
+        }
+    )
 
 
 async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -280,24 +304,28 @@ async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRe
             continue
         parts = line.split(None, 10)
         if len(parts) >= 11:
-            processes.append({
-                "user": parts[0],
-                "pid": parts[1],
-                "cpu_percent": parts[2],
-                "memory_percent": parts[3],
-                "vsz": parts[4],
-                "rss": parts[5],
-                "tty": parts[6],
-                "stat": parts[7],
-                "start": parts[8],
-                "time": parts[9],
-                "command": parts[10],
-            })
+            processes.append(
+                {
+                    "user": parts[0],
+                    "pid": parts[1],
+                    "cpu_percent": parts[2],
+                    "memory_percent": parts[3],
+                    "vsz": parts[4],
+                    "rss": parts[5],
+                    "tty": parts[6],
+                    "stat": parts[7],
+                    "start": parts[8],
+                    "time": parts[9],
+                    "command": parts[10],
+                }
+            )
 
-    return ToolResult.ok({
-        "processes": processes,
-        "count": len(processes),
-    })
+    return ToolResult.ok(
+        {
+            "processes": processes,
+            "count": len(processes),
+        }
+    )
 
 
 async def linux_execute_command(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:

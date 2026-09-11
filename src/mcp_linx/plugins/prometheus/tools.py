@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from mcp_linx.types import Status, ToolResult
+from mcp_linx.types import ToolResult
 
 
 def _check_promql(query: str) -> str | None:
@@ -73,9 +73,7 @@ async def prom_alerts(plugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/alerts: firing/pending алерты"""
     try:
         async with httpx.AsyncClient(timeout=plugin._timeout) as client:
-            resp = await client.get(
-                f"{plugin._base_url}/api/v1/alerts", headers=plugin._headers()
-            )
+            resp = await client.get(f"{plugin._base_url}/api/v1/alerts", headers=plugin._headers())
         if resp.status_code != 200:
             return ToolResult.error(f"Prometheus HTTP {resp.status_code}: {resp.text[:300]}")
         alerts = resp.json().get("data", {}).get("alerts", [])
@@ -93,9 +91,7 @@ async def prom_targets(plugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/targets: up/down scrape targets"""
     try:
         async with httpx.AsyncClient(timeout=plugin._timeout) as client:
-            resp = await client.get(
-                f"{plugin._base_url}/api/v1/targets", headers=plugin._headers()
-            )
+            resp = await client.get(f"{plugin._base_url}/api/v1/targets", headers=plugin._headers())
         if resp.status_code != 200:
             return ToolResult.error(f"Prometheus HTTP {resp.status_code}: {resp.text[:300]}")
         targets = resp.json().get("data", {}).get("activeTargets", [])
@@ -104,9 +100,11 @@ async def prom_targets(plugin, params: dict[str, Any]) -> ToolResult:
             "total": len(targets),
             "down": len(down),
             "down_targets": [
-                {"job": t.get("labels", {}).get("job", ""),
-                 "instance": t.get("labels", {}).get("instance", ""),
-                 "last_error": (t.get("lastError", "") or "")[:200]}
+                {
+                    "job": t.get("labels", {}).get("job", ""),
+                    "instance": t.get("labels", {}).get("instance", ""),
+                    "last_error": (t.get("lastError", "") or "")[:200],
+                }
                 for t in down[:20]
             ],
         }

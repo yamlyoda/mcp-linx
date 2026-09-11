@@ -6,7 +6,7 @@ import json
 import shlex
 from typing import Any
 
-from mcp_linx.types import Status, ToolResult
+from mcp_linx.types import ToolResult
 
 _BAD_PHASES = {"CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "Error", "Failed", "Pending"}
 
@@ -39,14 +39,16 @@ async def k8s_pods(plugin, params: dict[str, Any]) -> ToolResult:
             is_bad = phase in ("Failed", "Pending") or waiting in _BAD_PHASES or (restarts or 0) > 5
             if is_bad:
                 bad += 1
-            pods.append({
-                "name": meta.get("name", ""),
-                "phase": phase,
-                "waiting": waiting,
-                "ready": ready,
-                "restarts": restarts,
-                "node": item.get("spec", {}).get("nodeName", ""),
-            })
+            pods.append(
+                {
+                    "name": meta.get("name", ""),
+                    "phase": phase,
+                    "waiting": waiting,
+                    "ready": ready,
+                    "restarts": restarts,
+                    "node": item.get("spec", {}).get("nodeName", ""),
+                }
+            )
         data = {"total": len(pods), "problem": bad, "pods": pods}
         if bad:
             return ToolResult.degraded(data, [f"{bad} problem pods - see k8s_events/k8s_describe"])
@@ -70,12 +72,14 @@ async def k8s_events(plugin, params: dict[str, Any]) -> ToolResult:
         events = []
         for i in items[-50:]:
             obj = i.get("involvedObject", {})
-            events.append({
-                "reason": i.get("reason", ""),
-                "message": (i.get("message", "") or "")[:300],
-                "object": f"{obj.get('kind', '')}/{obj.get('name', '')}",
-                "count": i.get("count", 1),
-            })
+            events.append(
+                {
+                    "reason": i.get("reason", ""),
+                    "message": (i.get("message", "") or "")[:300],
+                    "object": f"{obj.get('kind', '')}/{obj.get('name', '')}",
+                    "count": i.get("count", 1),
+                }
+            )
         data = {"total": len(items), "warnings": len(warns), "events": events}
         if warns:
             return ToolResult.degraded(data, [f"{len(warns)} Warning events"])
@@ -131,7 +135,9 @@ async def k8s_describe(plugin, params: dict[str, Any]) -> ToolResult:
             "conditions": conditions,
             "container_statuses": st.get("containerStatuses", []),
         }
-        not_ready = [c for c in conditions if c.get("type") == "Ready" and c.get("status") == "False"]
+        not_ready = [
+            c for c in conditions if c.get("type") == "Ready" and c.get("status") == "False"
+        ]
         if not_ready:
             return ToolResult.degraded(data, [f"Pod {pod} not Ready"])
         return ToolResult.ok(data)
@@ -146,7 +152,9 @@ async def k8s_top(plugin, params: dict[str, Any]) -> ToolResult:
         base = plugin._kubectl_base()
         result = await plugin._run(f"{base} top pods -n {ns} --no-headers", timeout=20)
         if result["returncode"] != 0:
-            return ToolResult.error(result["stderr"][:500] or "kubectl top failed (metrics-server?)")
+            return ToolResult.error(
+                result["stderr"][:500] or "kubectl top failed (metrics-server?)"
+            )
         rows = [ln.split() for ln in result["stdout"].splitlines() if ln.strip()]
         pods = [
             {"pod": r[0], "cpu": r[1] if len(r) > 1 else "", "memory": r[2] if len(r) > 2 else ""}
@@ -174,12 +182,14 @@ async def k8s_deployments(plugin, params: dict[str, Any]) -> ToolResult:
             avail = st.get("availableReplicas", 0)
             if avail < desired:
                 bad += 1
-            deps.append({
-                "name": item.get("metadata", {}).get("name", ""),
-                "desired": desired,
-                "available": avail,
-                "updated": st.get("updatedReplicas", 0),
-            })
+            deps.append(
+                {
+                    "name": item.get("metadata", {}).get("name", ""),
+                    "desired": desired,
+                    "available": avail,
+                    "updated": st.get("updatedReplicas", 0),
+                }
+            )
         data = {"total": len(deps), "degraded": bad, "deployments": deps}
         if bad:
             return ToolResult.degraded(data, [f"{bad} deployments not fully available"])

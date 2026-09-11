@@ -22,17 +22,30 @@ class TestKubernetesTools:
         from mcp_linx.plugins.kubernetes.tools import k8s_pods
         from mcp_linx.types import Status
 
-        payload = {"items": [{
-            "metadata": {"name": "web-0"},
-            "spec": {"nodeName": "n1"},
-            "status": {"phase": "Running",
-                       "containerStatuses": [
-                           {"state": {"waiting": {"reason": "CrashLoopBackOff"}},
-                            "restartCount": 10, "ready": False}]},
-        }]}
-        plugin = _make_plugin(KubernetesPlugin, {
-            "_run": {"stdout": json.dumps(payload), "stderr": "", "returncode": 0},
-        })
+        payload = {
+            "items": [
+                {
+                    "metadata": {"name": "web-0"},
+                    "spec": {"nodeName": "n1"},
+                    "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                            {
+                                "state": {"waiting": {"reason": "CrashLoopBackOff"}},
+                                "restartCount": 10,
+                                "ready": False,
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+        plugin = _make_plugin(
+            KubernetesPlugin,
+            {
+                "_run": {"stdout": json.dumps(payload), "stderr": "", "returncode": 0},
+            },
+        )
         plugin._kubectl_base = MagicMock(return_value="kubectl")
         plugin._namespace = "default"
         result = await k8s_pods(plugin, {})
@@ -81,22 +94,27 @@ class TestNewCorrelations:
         from mcp_linx.types import ComponentState, Status
 
         agg = ContextAggregator()
-        agg.add_component(ComponentState("redis", Status.DEGRADED, "t",
-                                         issues=["evicted_keys=100"]))
+        agg.add_component(
+            ComponentState("redis", Status.DEGRADED, "t", issues=["evicted_keys=100"])
+        )
         agg.add_component(ComponentState("postgres", Status.CRITICAL, "t"))
         ctx = agg.build_context()
-        assert any(c.source == "redis" and "postgres" in c.related
-                   for c in (ctx.correlations or []))
+        assert any(
+            c.source == "redis" and "postgres" in c.related for c in (ctx.correlations or [])
+        )
 
     def test_k8s_oom_correlation(self):
         from mcp_linx.context_aggregator import ContextAggregator
         from mcp_linx.types import ComponentState, Status
 
         agg = ContextAggregator()
-        agg.add_component(ComponentState("kubernetes", Status.CRITICAL, "t",
-                                         issues=["CrashLoopBackOff in web-0"]))
-        agg.add_component(ComponentState("linux", Status.DEGRADED, "t",
-                                         issues=["memory pressure high"]))
+        agg.add_component(
+            ComponentState("kubernetes", Status.CRITICAL, "t", issues=["CrashLoopBackOff in web-0"])
+        )
+        agg.add_component(
+            ComponentState("linux", Status.DEGRADED, "t", issues=["memory pressure high"])
+        )
         ctx = agg.build_context()
-        assert any(c.source == "linux" and "kubernetes" in c.related
-                   for c in (ctx.correlations or []))
+        assert any(
+            c.source == "linux" and "kubernetes" in c.related for c in (ctx.correlations or [])
+        )

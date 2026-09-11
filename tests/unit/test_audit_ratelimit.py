@@ -87,7 +87,6 @@ class TestRateLimiter:
 
     def test_blocks_after_limit(self):
         from mcp_linx.ratelimit import RateLimiter
-        from mcp_linx.security import SecurityError
 
         limiter = RateLimiter(max_calls=2, window_seconds=60)
         assert limiter.check("t1") is True

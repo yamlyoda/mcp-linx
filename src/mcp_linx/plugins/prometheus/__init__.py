@@ -23,9 +23,9 @@ class PrometheusPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.prometheus.tools import (
+            prom_alerts,
             prom_query,
             prom_range,
-            prom_alerts,
             prom_targets,
         )
 

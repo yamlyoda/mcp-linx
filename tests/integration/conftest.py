@@ -46,7 +46,16 @@ def compose_up() -> None:
 
 def compose_down() -> None:
     subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "-p", PROJECT_NAME, "down", "--remove-orphans"],
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "-p",
+            PROJECT_NAME,
+            "down",
+            "--remove-orphans",
+        ],
         capture_output=True,
     )
 
@@ -74,8 +83,12 @@ def wait_for_postgres(host: str, port: int, timeout: float = 45.0) -> None:
     while time.time() < deadline:
         try:
             conn = psycopg2.connect(
-                host=host, port=port, user="test", password="testpass",
-                database="testdb", connect_timeout=3,
+                host=host,
+                port=port,
+                user="test",
+                password="testpass",
+                database="testdb",
+                connect_timeout=3,
             )
             conn.close()
             return
