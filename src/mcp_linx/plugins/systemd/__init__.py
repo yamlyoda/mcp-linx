@@ -27,6 +27,7 @@ class SystemdPlugin(DiagnosticPlugin):
             failed_units,
             service_logs,
             boot_analysis,
+            service_ip_filter,
         )
 
         return [
@@ -34,6 +35,7 @@ class SystemdPlugin(DiagnosticPlugin):
             PluginTool("failed_units", "Список failed юнитов (systemctl --failed)", failed_units),
             PluginTool("service_logs", "Логи сервиса через journalctl -u", service_logs),
             PluginTool("boot_analysis", "Анализ времени загрузки (systemd-analyze)", boot_analysis),
+            PluginTool("service_ip_filter", "Эффективный IP-фильтр юнита: unit-файлы + eBPF/bpftool (ground truth)", service_ip_filter),
         ]
 
     async def initialize(self, config: PluginConfig) -> None:

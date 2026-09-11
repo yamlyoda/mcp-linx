@@ -104,20 +104,22 @@ plugins:
 
 **English:**
 
-### Linux Plugin (7 tools)
+### Linux Plugin (8 tools)
 - `linux_host_stats` — Host statistics: CPU, memory, disk, load
 - `linux_processes` — List of running processes
 - `linux_logs` — Read system logs (journalctl, syslog)
 - `linux_network` — Network interfaces, ports, connections
+- `linux_firewall` — Firewall snapshot: nftables + policy routing (read-only)
 - `linux_disk` — Disk and filesystem usage
 - `linux_memory` — Detailed memory usage information
 - `linux_execute_command` — Execute an arbitrary read-only command
 
-### Nginx Plugin (4 tools)
+### Nginx Plugin (5 tools)
 - `nginx_status` — Nginx service status and processes
 - `nginx_logs` — Read error and access logs
 - `nginx_config` — Nginx configuration check
-- `nginx_upstream` — Upstream server status
+- `nginx_upstream` — Upstream servers: config + real HTTP health check
+- `nginx_stub_status` — stub_status metrics: active connections, requests
 
 ### Docker Plugin (7 tools)
 - `docker_containers` — List containers with filtering
@@ -144,17 +146,20 @@ plugins:
 - `redis_slowlog` — Slow log (SLOWLOG GET)
 - `redis_memory` — Memory analysis: used, peak, fragmentation, evictions
 
-### Systemd Plugin (4 tools)
+### Systemd Plugin (5 tools)
 - `service_status` — Unit status (systemctl status/is-active)
 - `failed_units` — Failed units list
 - `service_logs` — Service logs via journalctl -u
 - `boot_analysis` — Boot time analysis (systemd-analyze blame)
+- `service_ip_filter` — Effective IP filter: unit files + eBPF/bpftool (ground truth)
 
-### Netdiag Plugin (4 tools)
+### Netdiag Plugin (6 tools)
 - `http_check` — HTTP(S) check: status, timings, redirects
 - `tls_check` — TLS certificate: expiry, chain, issuer
 - `dns_resolve` — DNS resolution A/AAAA
 - `tcp_connect` — TCP connect with timing
+- `tcp_connect_as` — TCP probe as service user, per-uid filters (requires privileged_tools)
+- `tcpdump_probe` — Short tcpdump slice (requires privileged_tools)
 
 ### Kubernetes Plugin (6 tools)
 - `k8s_pods` — Pods with phases and restarts
@@ -195,6 +200,7 @@ plugins:
 - `linux_processes` — Список запущенных процессов
 - `linux_logs` — Чтение системных логов (journalctl, syslog)
 - `linux_network` — Сетевые интерфейсы, порты, соединения
+- `linux_firewall` — Firewall snapshot: nftables + policy routing (read-only)
 - `linux_disk` — Использование диска и файловых систем
 - `linux_memory` — Детальная информация об использовании памяти
 - `linux_execute_command` — Выполнение произвольной read-only команды
@@ -203,7 +209,8 @@ plugins:
 - `nginx_status` — Статус службы Nginx и процессов
 - `nginx_logs` — Чтение error и access логов
 - `nginx_config` — Проверка конфигурации Nginx
-- `nginx_upstream` — Статус upstream серверов
+- `nginx_upstream` — Upstream: конфиг + реальный HTTP health check
+- `nginx_stub_status` — Метрики stub_status: connections, requests
 
 ### Docker Plugin
 - `docker_containers` — Список контейнеров с фильтрацией
@@ -235,12 +242,15 @@ plugins:
 - `failed_units` — Список failed юнитов
 - `service_logs` — Логи сервиса через journalctl -u
 - `boot_analysis` — Анализ времени загрузки (systemd-analyze blame)
+- `service_ip_filter` — Эффективный IP-фильтр: unit-файлы + eBPF/bpftool
 
 ### Netdiag Plugin
 - `http_check` — HTTP(S) проверка: статус, тайминги, редиректы
 - `tls_check` — TLS сертификат: срок, chain, issuer
 - `dns_resolve` — DNS резолвинг A/AAAA
 - `tcp_connect` — TCP connect с замером времени
+- `tcp_connect_as` — TCP-проба от имени сервис-юзера, per-uid фильтры (нужен privileged_tools)
+- `tcpdump_probe` — Короткий tcpdump-срез (нужен privileged_tools)
 
 ### Kubernetes Plugin
 - `k8s_pods` — Поды с фазами и рестартами

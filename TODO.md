@@ -282,3 +282,40 @@ All variants implemented: redis, systemd, netdiag, kubernetes, prometheus, loki.
 
 ### Tests
 - **Total: ~80+ tests, 2 skipped (redis-cli).**
+
+---
+
+## Phase P0 — INCIDENT_504 follow-up (DONE 2026-09-11)
+
+Реальный инцидент 504 Gateway Timeout (VM Ubuntu 24.04, цепочка nginx → Go → PostgreSQL) выявил 3 слепые зоны сервера. Полный разбор — `docs/INCIDENT_504.md`, краткий журнал — `diagnosis_state.md` (креды вычищены: `PG_VM_HOST` + `***REDACTED***`).
+
+### Root causes на сервере (исправлены вручную, сервер read-only — не трогаем)
+1. **systemd IP-фильтр через eBPF** — `bpftool map dump` показал whitelist только `127.0.0.0/8`, `systemctl show` молчал. Фикс: drop-in `allow-db.conf` с `IPAddressAllow` для DB.
+2. **nftables + blackhole** — `skuid www-data tcp dport 8080 → mark 0x64`, `table 100 = blackhole default`. Фикс: `ip daddr 127.0.0.0/8 accept` до маркировки.
+
+### Added (5 tools)
+- `src/mcp_linx/plugins/systemd/tools.py::service_ip_filter` — unit-файлы + `bpftool` (LPM-trie decode в CIDR), вердикт `hidden_filter`. Зарегистрирован в `systemd/__init__.py`.
+- `src/mcp_linx/plugins/linux/tools.py::linux_firewall` — `nft list ruleset` (парсинг marks) + `ip rule` + все таблицы маршрутов (blackhole-detect) + `iptables -S` + `ufw status` + опциональный `ip route get`. Зарегистрирован в `linux/__init__.py`.
+- `src/mcp_linx/plugins/netdiag/tools.py::tcp_connect_as` — проба от сервисного uid (allowlist `_ALLOWED_PROBE_USERS`, `_HOST_RE`, лимиты). Требует `privileged_tools=true`.
+- `src/mcp_linx/plugins/netdiag/tools.py::tcpdump_probe` — короткий срез (count≤50, timeout≤15), 0 пакетов = дроп ниже интерфейса. Требует `privileged_tools=true`.
+- `src/mcp_linx/plugins/netdiag/__init__.py` — адаптер (Local/SSH) + `_run_privileged()` со строгим префикс-allowlist (`runuser -u `, `timeout `) + проверка DANGEROUS_PATTERNS. Без адаптера раньше привилегированные пробы были невозможны.
+- `src/mcp_linx/plugins/nginx/tools.py::nginx_upstream` — добавлены `proxy_connect_timeout_s` / `proxy_read_timeout_s` из конфига + `connect_ms` на каждый check + флаг `matches_proxy_connect_timeout`.
+
+### Correlations (3 новых в context_aggregator.py)
+- `timeout_equals_proxy_timeout` — измеренное время ≈ proxy_connect_timeout (±15%) → SYN-дроп, смотреть linux_firewall + service_ip_filter + tcp_connect_as.
+- `process_can_but_service_cannot` (netdiag per-uid) — проба OK от одного uid, FAIL от сервисного → nft skuid / IPAllow.
+- `db_host_vs_listen_mismatch` — DB_HOST vs listen_addresses → сверить ss -tlnp + pg_hba.conf.
+
+### Security
+- `security.py::READONLY_COMMANDS` += `bpftool, nft, iptables, ufw` (только read-only подкоманды).
+- `config/settings.yaml::plugins.netdiag.privileged_tools: false` (по умолчанию выкл; tools возвращают error с готовой ручной командой).
+- Валидация: `_UNIT_RE` (юниты), `_HOST_RE` (хосты), `_ALLOWED_PROBE_USERS`, iface regex, `shlex.quote` везде.
+
+### Tests (17 новых)
+- `test_new_plugins.py`: service_ip_filter ×3 (no filter / hidden filter / bad unit), tcp_connect_as ×3 (disabled / bad user / ok), tcpdump_probe ×2 (disabled / no packets).
+- `test_base_plugins.py::TestLinuxFirewall` ×2 (clean / blackhole detected).
+- `test_context_aggregator.py::TestContextAggregatorIncident504` ×5 (timeout match / match without metrics / no correlation when differ / per-uid / db_host mismatch).
+- **Total: 95 passed, 2 skipped.**
+
+### Discovery check
+- `discover_plugins()` → 10 plugins, 56 tools (было 51) + 3 system tools.

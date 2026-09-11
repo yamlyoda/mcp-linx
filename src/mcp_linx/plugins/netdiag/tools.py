@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import shlex
 import socket
 import ssl
 import time
@@ -114,6 +116,12 @@ async def dns_resolve(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(f"DNS resolve failed for '{name}': {e}")
 
 
+# Разрешённые пользователи для tcp_connect_as (защита от privesc)
+_ALLOWED_PROBE_USERS = {"www-data", "nginx", "nobody", "app"}
+
+_HOST_RE = re.compile(r"^[A-Za-z0-9.\-:]{1,253}$")
+
+
 async def tcp_connect(plugin, params: dict[str, Any]) -> ToolResult:
     """TCP connect к host:port"""
     host = str(params.get("host", "")).strip()
@@ -139,3 +147,103 @@ async def tcp_connect(plugin, params: dict[str, Any]) -> ToolResult:
             data={"host": host, "port": port, "reachable": False},
             error_message=str(e)[:500],
         )
+
+
+async def tcp_connect_as(plugin, params: dict[str, Any]) -> ToolResult:
+    """TCP-проба от имени сервисного пользователя (per-uid фильтры).
+
+    Кейс INCIDENT_504: root/app могут, www-data — нет (nft skuid).
+    Требует privileged_tools=true в конфиге.
+    """
+    host = str(params.get("host", "")).strip()
+    user = str(params.get("user", "")).strip()
+    if not host or not _HOST_RE.match(host):
+        return ToolResult.error("Param 'host' must be a valid IP/hostname")
+    if user not in _ALLOWED_PROBE_USERS:
+        return ToolResult.error(
+            f"Param 'user' must be one of: {', '.join(sorted(_ALLOWED_PROBE_USERS))}"
+        )
+    try:
+        port = max(1, min(int(params.get("port", 80)), 65535))
+        timeout = max(1, min(int(params.get("timeout", 5)), 15))
+    except (ValueError, TypeError):
+        return ToolResult.error("Params 'port'/'timeout' must be integers")
+
+    cfg = getattr(plugin, "_config", None) or {}
+    if not bool(cfg.get("privileged_tools", False)):
+        return ToolResult.error(
+            "tcp_connect_as is disabled: set plugins.netdiag.privileged_tools=true "
+            "(manual: sudo -u <user> timeout <t> bash -c '</dev/tcp/HOST/PORT')"
+        )
+    runner = getattr(plugin, "_run_privileged", None)
+    if runner is None:
+        return ToolResult.error("tcp_connect_as not supported by this adapter")
+
+    cmd = (
+        f"runuser -u {shlex.quote(user)} -- timeout {timeout} "
+        f"bash -c {shlex.quote(f'</dev/tcp/{host}/{port}')} 2>&1"
+    )
+    started = time.monotonic()
+    result = await runner(cmd, timeout + 5)
+    elapsed_ms = round((time.monotonic() - started) * 1000, 1)
+    ok = result.get("returncode", 1) == 0
+    data: dict[str, Any] = {
+        "host": host, "port": port, "user": user,
+        "reachable": ok, "elapsed_ms": elapsed_ms,
+        "stderr": (result.get("stderr", "") or result.get("stdout", ""))[:500],
+    }
+    if ok:
+        return ToolResult.ok(data)
+    return ToolResult(
+        status=Status.UNHEALTHY, data=data,
+        suggestions=[f"Connect as {user} to {host}:{port} failed — "
+                     "возможен per-uid фильтр (nft skuid / systemd IPAllow)"],
+        error_message=f"tcp probe as {user} failed (rc={result.get('returncode')})",
+    )
+
+
+async def tcpdump_probe(plugin, params: dict[str, Any]) -> ToolResult:
+    """Короткий tcpdump-срез: есть ли пакеты к host:port.
+
+    0 пакетов при активном connect() = дроп ниже интерфейса.
+    Требует privileged_tools=true.
+    """
+    host = str(params.get("host", "")).strip()
+    if not host or not _HOST_RE.match(host):
+        return ToolResult.error("Param 'host' must be a valid IP/hostname")
+    try:
+        port = max(1, min(int(params.get("port", 80)), 65535))
+        count = max(1, min(int(params.get("count", 20)), 50))
+        timeout = max(2, min(int(params.get("timeout", 10)), 15))
+        iface = str(params.get("iface", "any")).strip() or "any"
+    except (ValueError, TypeError):
+        return ToolResult.error("Params 'port'/'count'/'timeout' must be integers")
+    if not re.match(r"^[A-Za-z0-9.\-_]{1,32}$", iface):
+        return ToolResult.error("Param 'iface' is invalid")
+
+    cfg = getattr(plugin, "_config", None) or {}
+    if not bool(cfg.get("privileged_tools", False)):
+        return ToolResult.error(
+            "tcpdump_probe is disabled: set plugins.netdiag.privileged_tools=true "
+            f"(manual: sudo timeout {timeout} tcpdump -i {iface} -c {count} -nn "
+            f"host {host} and port {port})"
+        )
+    runner = getattr(plugin, "_run_privileged", None)
+    if runner is None:
+        return ToolResult.error("tcpdump_probe not supported by this adapter")
+
+    cmd = (f"timeout {timeout} tcpdump -i {shlex.quote(iface)} -c {count} -nn "
+           f"host {shlex.quote(host)} and port {port} 2>&1")
+    result = await runner(cmd, timeout + 5)
+    text = (result.get("stdout", "") or "")[:4000]
+    packets = [ln for ln in text.splitlines()
+               if re.match(r"^\d{2}:\d{2}:\d{2}\.", ln.strip())]
+    data = {"host": host, "port": port, "iface": iface,
+            "packets_seen": len(packets), "output": text}
+    if not packets:
+        return ToolResult.degraded(
+            data,
+            ["0 пакетов при пробе — дроп ниже интерфейса "
+             "(cgroup_skb/systemd IPAllow) либо хост:порт недоступен"],
+        )
+    return ToolResult.ok(data)

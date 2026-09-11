@@ -58,6 +58,46 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
 
     results: dict[str, Any] = {}
 
+    # --- 0. proxy_* таймауты из конфига (для корреляции timeout==proxy_connect_timeout) ---
+    import re as _re
+    import time as _time
+
+    proxy_ct_s: float | None = None
+    proxy_rt_s: float | None = None
+    try:
+        to_result = await plugin._run_command(
+            "grep -rE 'proxy_(connect|read|send)_timeout' /etc/nginx/nginx.conf "
+            "/etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf "
+            "2>/dev/null | head -20"
+        )
+        to_text = to_result.get("stdout", "")
+        results["proxy_timeout_config"] = to_text.strip()[:1000]
+
+        def _parse_timeout(text: str, name: str) -> float | None:
+            m = _re.search(rf"{name}\s+([\d.]+)\s*(ms|s|m)?", text)
+            if not m:
+                return None
+            val = float(m.group(1))
+            unit = (m.group(2) or "s").lower()
+            return val / 1000.0 if unit == "ms" else (val * 60.0 if unit == "m" else val)
+
+        # Берём последнее значение (nginx: последний в контексте побеждает)
+        for ln in to_text.splitlines():
+            if "proxy_connect_timeout" in ln:
+                v = _parse_timeout(ln, "proxy_connect_timeout")
+                if v is not None:
+                    proxy_ct_s = v
+            if "proxy_read_timeout" in ln:
+                v = _parse_timeout(ln, "proxy_read_timeout")
+                if v is not None:
+                    proxy_rt_s = v
+    except Exception:
+        pass
+    if proxy_ct_s is not None:
+        results["proxy_connect_timeout_s"] = proxy_ct_s
+    if proxy_rt_s is not None:
+        results["proxy_read_timeout_s"] = proxy_rt_s
+
     # --- 1. Поиск upstream блоков в конфиге ---
     upstream_result = await plugin._run_command(
         "grep -A 10 'upstream' /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null | grep -v '^#' | head -100"
@@ -104,13 +144,16 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
                 url = f"http://{host_part}"
 
             try:
+                _t0 = _time.monotonic()
                 resp = await client.get(url)
+                connect_ms = round((_time.monotonic() - _t0) * 1000, 1)
                 ok = resp.status_code < 500  # 4xx = жив, 5xx = жив но ошибается
                 entry: dict[str, Any] = {
                     "server": server,
                     "url": url,
                     "status_code": resp.status_code,
                     "alive": ok,
+                    "connect_ms": connect_ms,
                 }
                 if ok:
                     live.append(server)
@@ -125,6 +168,9 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
                     "alive": False,
                     "error": str(e)[:200],
                 }
+                # Таймаут httpx ≈ proxy_connect_timeout → подпись SYN-дропа (INCIDENT_504)
+                if proxy_ct_s and ("timeout" in str(e).lower() or "timed out" in str(e).lower()):
+                    entry["matches_proxy_connect_timeout"] = True
             checks.append(entry)
 
     results["checks"] = checks

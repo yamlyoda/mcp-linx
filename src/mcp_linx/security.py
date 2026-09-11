@@ -43,6 +43,8 @@ class SecurityGuard:
         "docker", "psql", "pg_isready", "nginx", "curl",
         "uname", "uptime", "nproc", "vmstat", "swapon", "vm_stat", "sysctl",
         "redis-cli", "kubectl", "systemd-analyze",
+        # P0 (INCIDENT_504): read-only подкоманды диагностики firewall/eBPF
+        "bpftool", "nft", "iptables", "ufw",
     ]
     
     def __init__(self, config: dict[str, Any] | None = None):

@@ -111,6 +111,7 @@ plugins:
   netdiag:
     enabled: true
     timeout_seconds: 15
+    privileged_tools: false  # tcp_connect_as / tcpdump_probe (runuser, tcpdump) — только чтение с лимитами
 
   kubernetes:
     enabled: true

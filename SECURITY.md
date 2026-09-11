@@ -193,6 +193,8 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 - [x] Error messages don't leak sensitive info — ✅ Generic error messages
 - [ ] Authentication/authorization implemented — ❌ Not implemented
 - [x] Audit logging enabled — ✅ Implemented in Phase 1 (audit.py + agent_loop integration)
+- [x] Privileged tools gated by config — ✅ `plugins.netdiag.privileged_tools: false` by default (`tcp_connect_as`, `tcpdump_probe` return error with manual command)
+- [x] New diagnostic commands restricted to read-only subcommands — ✅ `bpftool {show,dump}`, `nft list`, `ip {rule,route} show`, `iptables -S`, `ufw status` only
 
 ---
 
@@ -217,3 +219,7 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 | `src/mcp_linx/plugins/postgres/tools.py` | ✅ Fixed | SQL injection fixed with parameterized query |
 | `config/settings.yaml` | ✅ Clean | Passwords from env |
 | `tests/conftest.py` | ✅ Clean | Test fixtures only |
+| `src/mcp_linx/plugins/systemd/tools.py` | ✅ Clean | `service_ip_filter`: unit + bpftool (LPM-trie→CIDR), `_UNIT_RE` allowlist |
+| `src/mcp_linx/plugins/linux/tools.py` | ✅ Clean | `linux_firewall`: nft/ip rule/iptables/ufw read-only snapshot, marks parsing |
+| `src/mcp_linx/plugins/netdiag/tools.py` | ✅ Clean | `tcp_connect_as`/`tcpdump_probe`: `_ALLOWED_PROBE_USERS`, `_HOST_RE`, count≤50, timeout≤15 |
+| `src/mcp_linx/plugins/netdiag/__init__.py` | ✅ Clean | `_run_privileged`: строгий префикс-allowlist (`runuser -u `, `timeout `) + DANGEROUS_PATTERNS |

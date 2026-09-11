@@ -230,3 +230,85 @@ class TestContextAggregatorNewCorrelations:
         assert ctx.correlations is not None
         disk_corr = [c for c in ctx.correlations if c.source == "linux" and "docker" in c.related and "space" in c.evidence.lower()]
         assert len(disk_corr) >= 1
+
+
+class TestContextAggregatorIncident504:
+    """Тесты корреляций INCIDENT_504: SYN-дроп, per-uid, DB_HOST mismatch"""
+
+    @pytest.fixture
+    def aggregator(self) -> ContextAggregator:
+        return ContextAggregator()
+
+    def test_timeout_equals_proxy_timeout(self, aggregator: ContextAggregator):
+        """Таймаут == proxy_connect_timeout → L3/L4 дроп, а не медленный код"""
+        aggregator.add_component(ComponentState(
+            plugin_id="nginx",
+            status=Status.CRITICAL,
+            last_checked="2024-01-01T00:00:00Z",
+            metrics={"proxy_connect_timeout_s": 3.0, "upstream_connect_ms": 3003.6},
+            issues=["upstream timed out while connecting to upstream"],
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        corr = [c for c in ctx.correlations if c.source == "nginx" and "linux" in c.related]
+        assert len(corr) >= 1
+        assert "proxy_connect_timeout" in corr[0].evidence
+
+    def test_timeout_match_without_metrics(self, aggregator: ContextAggregator):
+        """Таймаут без замеров — всё равно L3/L4-подозрение"""
+        aggregator.add_component(ComponentState(
+            plugin_id="nginx",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["upstream timed out"],
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        corr = [c for c in ctx.correlations if c.source == "nginx"]
+        assert len(corr) >= 1
+
+    def test_no_correlation_when_times_differ(self, aggregator: ContextAggregator):
+        """Быстрый таймаут (не равен proxy_connect_timeout) — не L3/L4 корреляция"""
+        aggregator.add_component(ComponentState(
+            plugin_id="nginx",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            metrics={"proxy_connect_timeout_s": 30.0, "upstream_connect_ms": 500.0},
+            issues=["upstream timed out"],
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        corr = [c for c in ctx.correlations if c.source == "nginx"]
+        assert len(corr) == 0
+
+    def test_per_uid_filter_correlation(self, aggregator: ContextAggregator):
+        """Проба проходит от одного uid, падает от сервисного → per-uid фильтр"""
+        aggregator.add_component(ComponentState(
+            plugin_id="netdiag",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["Connect as www-data failed — возможен per-uid фильтр (nft skuid)"],
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        corr = [c for c in ctx.correlations if c.source == "netdiag"]
+        assert len(corr) >= 1
+        assert "systemd" in corr[0].related
+
+    def test_db_host_mismatch_correlation(self, aggregator: ContextAggregator):
+        """DB_HOST vs listen_addresses mismatch"""
+        aggregator.add_component(ComponentState(
+            plugin_id="postgres",
+            status=Status.DEGRADED,
+            last_checked="2024-01-01T00:00:00Z",
+            issues=["DB_HOST=127.0.0.1 not in listen_addresses (10.0.0.5)"],
+        ))
+
+        ctx = aggregator.build_context()
+        assert ctx.correlations is not None
+        corr = [c for c in ctx.correlations if c.source == "postgres" and "DB_HOST" in c.evidence]
+        assert len(corr) >= 1

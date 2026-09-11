@@ -96,6 +96,79 @@ async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResu
     return ToolResult.ok(results)
 
 
+async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
+    """Firewall snapshot: nftables + iptables + policy routing (read-only).
+
+    Закрывает слепую зону INCIDENT_504: `iptables -L` не показывает
+    nft-правила (skuid → fwmark) и blackhole-таблицы. Собирает:
+    nft ruleset, ip rule, все таблицы маршрутов, ufw status (best-effort).
+    Только чтение: nft list / ip route show / iptables -S.
+    """
+    import re as _re
+
+    results: dict[str, Any] = {}
+    issues: list[str] = []
+
+    # 1. nftables ruleset (read-only: только list)
+    nft = await plugin._run_command("nft list ruleset 2>&1 || echo 'NO_NFT'")
+    nft_text = nft.get("stdout", "")
+    results["nft_ruleset"] = nft_text[:6000]
+    results["nft_available"] = "NO_NFT" not in nft_text
+
+    # Парсинг маркировок: meta skuid ... tcp dport X ... mark set Y
+    marks: list[dict[str, Any]] = []
+    for ln in nft_text.splitlines():
+        if "mark set" in ln:
+            m = _re.search(r"skuid\s+[\"']?(\S+?)[\"']?\s+.*?dport\s+(\d+).*?mark\s+set\s+(0x[0-9a-fA-F]+|\d+)", ln)
+            if m:
+                marks.append({"skuid": m.group(1), "dport": int(m.group(2)),
+                              "mark": m.group(3), "rule": ln.strip()[:200]})
+            else:
+                m2 = _re.search(r"mark\s+set\s+(0x[0-9a-fA-F]+|\d+)", ln)
+                if m2:
+                    marks.append({"mark": m2.group(1), "rule": ln.strip()[:200]})
+    results["marks"] = marks
+    if marks:
+        issues.append(f"nft маркировки fwmark: {len(marks)} правил — проверьте ip rule/table ниже")
+
+    # 2. Policy routing: ip rule + все таблицы
+    rule = await plugin._run_command("ip rule show 2>&1")
+    rule_text = rule.get("stdout", "")
+    results["ip_rules"] = rule_text[:2000]
+
+    policy_routes: list[dict[str, Any]] = []
+    tables: set[str] = set(_re.findall(r"lookup\s+(\S+)", rule_text))
+    tables.update(["main", "local"])
+    for tbl in sorted(tables)[:10]:
+        r = await plugin._run_command(f"ip route show table {tbl} 2>&1")
+        out = r.get("stdout", "").strip()
+        if out and "Error" not in out:
+            policy_routes.append({"table": tbl, "routes": out[:1500]})
+            if "blackhole" in out.lower():
+                issues.append(f"Table {tbl} содержит blackhole — трафик с fwmark туда уходит в никуда")
+    results["policy_routes"] = policy_routes
+
+    # 3. iptables fallback (read-only: -S/-L без изменений)
+    ipt = await plugin._run_command("iptables -S 2>&1 | head -50 || echo 'NO_IPTABLES'")
+    results["iptables"] = ipt.get("stdout", "")[:3000]
+
+    # 4. ufw status (best-effort)
+    ufw = await plugin._run_command("ufw status verbose 2>&1 || echo 'NO_UFW'")
+    results["ufw"] = ufw.get("stdout", "")[:1500]
+
+    # 5. Опционально: ip route get для пары src->dst
+    probe_dst = str(params.get("probe_dst", "")).strip()
+    if probe_dst:
+        if not _re.match(r"^[A-Za-z0-9.\-:]+$", probe_dst):
+            return ToolResult.error(f"Invalid probe_dst '{probe_dst}'")
+        g = await plugin._run_command(f"ip route get {probe_dst} 2>&1")
+        results["route_get"] = {probe_dst: g.get("stdout", "").strip()[:500]}
+
+    if issues:
+        return ToolResult.degraded(results, issues)
+    return ToolResult.ok(results)
+
+
 async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Использование диска и файловых систем"""
     results: dict[str, Any] = {}

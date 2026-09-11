@@ -271,3 +271,46 @@ class TestNginxConfig:
         result = await nginx_config(plugin, {})
         assert result.status == Status.HEALTHY
         assert result.data["config_test_ok"] is False
+
+
+class TestLinuxFirewall:
+    @pytest.mark.asyncio
+    async def test_firewall_clean(self):
+        from mcp_linx.plugins.linux import LinuxPlugin
+        from mcp_linx.plugins.linux.tools import linux_firewall
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(LinuxPlugin, {})
+        plugin._run_command = AsyncMock(side_effect=[
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "0: from all lookup local\n32766: from all lookup main\n", "stderr": "", "returncode": 0},
+            {"stdout": "broadcast 127.0.0.0 dev lo table local\n", "stderr": "", "returncode": 0},
+            {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
+        ])
+        result = await linux_firewall(plugin, {})
+        assert result.status == Status.HEALTHY
+        assert result.data["marks"] == []
+
+    @pytest.mark.asyncio
+    async def test_firewall_blackhole_detected(self):
+        from mcp_linx.plugins.linux import LinuxPlugin
+        from mcp_linx.plugins.linux.tools import linux_firewall
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(LinuxPlugin, {})
+        plugin._run_command = AsyncMock(side_effect=[
+            {"stdout": "table inet netpolicy {\n chain output {\n meta skuid www-data tcp dport 8080 meta mark set 0x64\n }\n}\n",
+             "stderr": "", "returncode": 0},
+            {"stdout": "100: from all fwmark 0x64 lookup 100\n", "stderr": "", "returncode": 0},
+            {"stdout": "blackhole default\n", "stderr": "", "returncode": 0},
+            {"stdout": "broadcast 127.0.0.0 dev lo table local\n", "stderr": "", "returncode": 0},
+            {"stdout": "default via 10.0.0.1 dev eth0\n", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "Status: inactive\n", "stderr": "", "returncode": 0},
+        ])
+        result = await linux_firewall(plugin, {})
+        assert result.status == Status.DEGRADED
+        assert result.data["marks"][0]["mark"] == "0x64"
+        assert any("blackhole" in s for s in result.suggestions)

@@ -270,6 +270,62 @@ class ContextAggregator:
                     )
                 )
 
+        # Корреляция (INCIDENT_504): таймаут == proxy_connect_timeout → L3/L4 дроп
+        # Подпись SYN-дропа, а не медленного кода: измеренное время совпадает
+        # с proxy_connect_timeout из конфига nginx (±15%).
+        if nginx_state:
+            nx_issues = " ".join(nginx_state.issues or []).lower()
+            nx_metrics = nginx_state.metrics or {}
+            if "upstream timed out" in nx_issues or "timed out" in nx_issues:
+                proxy_ct = nx_metrics.get("proxy_connect_timeout_s")
+                measured = nx_metrics.get("upstream_connect_ms")
+                match = False
+                if isinstance(proxy_ct, (int, float)) and isinstance(measured, (int, float)) and proxy_ct > 0:
+                    ratio = measured / 1000.0 / float(proxy_ct)
+                    match = 0.85 <= ratio <= 1.15
+                elif "timed out" in nx_issues:
+                    match = True  # таймаут без замеров — всё равно L3/L4-подозрение
+                if match:
+                    correlations.append(
+                        Correlation(
+                            type="root_cause_suspected",
+                            source="nginx",
+                            related=["linux", "systemd", "netdiag"],
+                            evidence="Upstream timeout совпадает с proxy_connect_timeout — "
+                            "SYN дропается (firewall/nft/eBPF), а не медленный upstream. "
+                            "Смотреть linux_firewall + service_ip_filter + tcp_connect_as",
+                        )
+                    )
+
+        # Корреляция (INCIDENT_504): процесс может, сервис — нет → per-uid фильтр
+        if netdiag_state := self._get_component_by_plugin(components, "netdiag"):
+            nd_issues = " ".join(netdiag_state.issues or []).lower()
+            if "per-uid" in nd_issues or "per-uid фильтр" in nd_issues:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="netdiag",
+                        related=["linux", "systemd"],
+                        evidence="TCP-проба проходит от одного пользователя и падает от сервисного "
+                        "uid — per-uid фильтр (nft skuid / systemd IPAllow). "
+                        "Смотреть linux_firewall (marks) + service_ip_filter",
+                    )
+                )
+
+        # Корреляция (INCIDENT_504): DB_HOST vs listen_addresses mismatch
+        if postgres_state:
+            pg_issues = " ".join(postgres_state.issues or []).lower()
+            if "db_host" in pg_issues and "listen" in pg_issues:
+                correlations.append(
+                    Correlation(
+                        type="root_cause_suspected",
+                        source="postgres",
+                        related=["linux", "netdiag"],
+                        evidence="DB_HOST из конфига приложения не совпадает с listen_addresses "
+                        "PostgreSQL — не менять вслепую, сверить ss -tlnp + pg_hba.conf",
+                    )
+                )
+
         return correlations
     
     def _get_component_by_plugin(

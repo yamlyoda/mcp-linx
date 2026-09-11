@@ -108,6 +108,52 @@ class TestSystemdTools:
         assert result.status == Status.HEALTHY
         assert result.data["count"] == 0
 
+    @pytest.mark.asyncio
+    async def test_service_ip_filter_no_filter(self):
+        from mcp_linx.plugins.systemd import SystemdPlugin
+        from mcp_linx.plugins.systemd.tools import service_ip_filter
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(SystemdPlugin, {})
+        plugin._run = AsyncMock(side_effect=[
+            {"stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n", "stderr": "", "returncode": 0},
+            {"stdout": "NO_CGROUP_BPF\n", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+            {"stdout": "", "stderr": "", "returncode": 0},
+        ])
+        result = await service_ip_filter(plugin, {"unit": "nginx.service"})
+        assert result.status == Status.HEALTHY
+        assert result.data["verdict"] == "no_ip_filter_detected"
+
+    @pytest.mark.asyncio
+    async def test_service_ip_filter_hidden_filter(self):
+        from mcp_linx.plugins.systemd import SystemdPlugin
+        from mcp_linx.plugins.systemd.tools import service_ip_filter
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(SystemdPlugin, {})
+        plugin._run = AsyncMock(side_effect=[
+            {"stdout": "IPAddressAllow=\nIPAddressDeny=\nIPAccounting=no\n", "stderr": "", "returncode": 0},
+            {"stdout": "ID 106 cgroup_skb name sd_fw_egress attached\n", "stderr": "", "returncode": 0},
+            {"stdout": "106: cgroup_skb name sd_fw_egress tag abc\n", "stderr": "", "returncode": 0},
+            {"stdout": "11: lpm_trie name 4_app flags 0x1\n", "stderr": "", "returncode": 0},
+            {"stdout": "key: 08 00 00 00 7f 00 00 00 value: 01 00 00 00\n", "stderr": "", "returncode": 0},
+        ])
+        result = await service_ip_filter(plugin, {"unit": "app.service"})
+        assert result.status == Status.DEGRADED
+        assert result.data["verdict"] == "hidden_filter"
+        assert result.data["effective_allow"] == ["127.0.0.0/8"]
+
+    @pytest.mark.asyncio
+    async def test_service_ip_filter_bad_unit(self):
+        from mcp_linx.plugins.systemd import SystemdPlugin
+        from mcp_linx.plugins.systemd.tools import service_ip_filter
+        from mcp_linx.types import Status
+
+        plugin = _make_plugin(SystemdPlugin, {})
+        result = await service_ip_filter(plugin, {"unit": "../evil"})
+        assert result.status == Status.ERROR
+
 
 class TestNetdiagTools:
     @pytest.mark.asyncio
@@ -139,3 +185,64 @@ class TestNetdiagTools:
         plugin = MagicMock(spec=NetdiagPlugin)
         result = await tcp_connect(plugin, {"host": ""})
         assert result.status == Status.ERROR
+
+    @pytest.mark.asyncio
+    async def test_tcp_connect_as_disabled(self):
+        from mcp_linx.plugins.netdiag import NetdiagPlugin
+        from mcp_linx.plugins.netdiag.tools import tcp_connect_as
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NetdiagPlugin)
+        plugin._config = {}
+        result = await tcp_connect_as(plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"})
+        assert result.status == Status.ERROR
+        assert "privileged_tools" in (result.error_message or "")
+
+    @pytest.mark.asyncio
+    async def test_tcp_connect_as_bad_user(self):
+        from mcp_linx.plugins.netdiag import NetdiagPlugin
+        from mcp_linx.plugins.netdiag.tools import tcp_connect_as
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NetdiagPlugin)
+        plugin._config = {"privileged_tools": True}
+        result = await tcp_connect_as(plugin, {"host": "127.0.0.1", "port": 8080, "user": "root"})
+        assert result.status == Status.ERROR
+
+    @pytest.mark.asyncio
+    async def test_tcp_connect_as_ok(self):
+        from mcp_linx.plugins.netdiag import NetdiagPlugin
+        from mcp_linx.plugins.netdiag.tools import tcp_connect_as
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NetdiagPlugin)
+        plugin._config = {"privileged_tools": True}
+        plugin._run_privileged = AsyncMock(return_value={"stdout": "", "stderr": "", "returncode": 0})
+        result = await tcp_connect_as(plugin, {"host": "127.0.0.1", "port": 8080, "user": "www-data"})
+        assert result.status == Status.HEALTHY
+        assert result.data["reachable"] is True
+
+    @pytest.mark.asyncio
+    async def test_tcpdump_probe_disabled(self):
+        from mcp_linx.plugins.netdiag import NetdiagPlugin
+        from mcp_linx.plugins.netdiag.tools import tcpdump_probe
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NetdiagPlugin)
+        plugin._config = {}
+        result = await tcpdump_probe(plugin, {"host": "127.0.0.1", "port": 8080})
+        assert result.status == Status.ERROR
+        assert "privileged_tools" in (result.error_message or "")
+
+    @pytest.mark.asyncio
+    async def test_tcpdump_probe_no_packets(self):
+        from mcp_linx.plugins.netdiag import NetdiagPlugin
+        from mcp_linx.plugins.netdiag.tools import tcpdump_probe
+        from mcp_linx.types import Status
+
+        plugin = MagicMock(spec=NetdiagPlugin)
+        plugin._config = {"privileged_tools": True}
+        plugin._run_privileged = AsyncMock(return_value={"stdout": "tcpdump: listening\n0 packets captured\n", "stderr": "", "returncode": 0})
+        result = await tcpdump_probe(plugin, {"host": "10.0.0.1", "port": 5432})
+        assert result.status == Status.DEGRADED
+        assert result.data["packets_seen"] == 0
