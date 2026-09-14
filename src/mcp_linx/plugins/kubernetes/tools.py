@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import json
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_linx.types import ToolResult
+
+if TYPE_CHECKING:
+    from mcp_linx.plugins.kubernetes import KubernetesPlugin
 
 _BAD_PHASES = {"CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "Error", "Failed", "Pending"}
 
 
-def _ns(params: dict[str, Any], plugin) -> str:
+def _ns(params: dict[str, Any], plugin: KubernetesPlugin) -> str:
     return str(params.get("namespace", "") or plugin._namespace)
 
 
-async def k8s_pods(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_pods(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl get pods -o json: фазы, рестарты, readiness"""
     try:
         ns = shlex.quote(_ns(params, plugin))
@@ -57,7 +60,7 @@ async def k8s_pods(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def k8s_events(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_events(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl get events: предупреждения кластера"""
     try:
         ns = shlex.quote(_ns(params, plugin))
@@ -88,7 +91,7 @@ async def k8s_events(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def k8s_logs(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_logs(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl logs pod: логи контейнера"""
     try:
         pod = str(params.get("pod", "")).strip()
@@ -112,7 +115,7 @@ async def k8s_logs(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def k8s_describe(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_describe(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl get pod -o json: conditions пода"""
     try:
         pod = str(params.get("pod", "")).strip()
@@ -145,7 +148,7 @@ async def k8s_describe(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def k8s_top(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_top(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl top pods: ресурсы подов"""
     try:
         ns = shlex.quote(_ns(params, plugin))
@@ -165,7 +168,7 @@ async def k8s_top(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def k8s_deployments(plugin, params: dict[str, Any]) -> ToolResult:
+async def k8s_deployments(plugin: KubernetesPlugin, params: dict[str, Any]) -> ToolResult:
     """kubectl get deployments: available vs desired"""
     try:
         ns = shlex.quote(_ns(params, plugin))

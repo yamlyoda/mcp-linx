@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_linx.types import Status, ToolResult
+
+if TYPE_CHECKING:
+    from mcp_linx.plugins.redis import RedisPlugin
 
 _ALLOWED_INFO_SECTIONS = {"memory", "clients", "stats", "replication", "persistence", "server"}
 
@@ -21,7 +24,7 @@ def _parse_info(text: str) -> dict[str, str]:
     return data
 
 
-async def redis_ping(plugin, params: dict[str, Any]) -> ToolResult:
+async def redis_ping(plugin: RedisPlugin, params: dict[str, Any]) -> ToolResult:
     """Проверка доступности Redis"""
     try:
         result = await plugin._run_redis_cli("PING", timeout=10)
@@ -36,7 +39,7 @@ async def redis_ping(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def redis_info(plugin, params: dict[str, Any]) -> ToolResult:
+async def redis_info(plugin: RedisPlugin, params: dict[str, Any]) -> ToolResult:
     """INFO section: memory/clients/stats/replication/persistence/server"""
     section = str(params.get("section", "memory"))
     if section not in _ALLOWED_INFO_SECTIONS:
@@ -53,7 +56,7 @@ async def redis_info(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def redis_clients(plugin, params: dict[str, Any]) -> ToolResult:
+async def redis_clients(plugin: RedisPlugin, params: dict[str, Any]) -> ToolResult:
     """CLIENT LIST — список подключений"""
     try:
         limit = max(1, min(int(params.get("limit", 50)), 500))
@@ -93,7 +96,7 @@ async def redis_clients(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def redis_slowlog(plugin, params: dict[str, Any]) -> ToolResult:
+async def redis_slowlog(plugin: RedisPlugin, params: dict[str, Any]) -> ToolResult:
     """SLOWLOG GET count"""
     try:
         count = max(1, min(int(params.get("count", 10)), 100))
@@ -114,7 +117,7 @@ async def redis_slowlog(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def redis_memory(plugin, params: dict[str, Any]) -> ToolResult:
+async def redis_memory(plugin: RedisPlugin, params: dict[str, Any]) -> ToolResult:
     """Анализ памяти Redis по INFO memory"""
     try:
         result = await plugin._run_redis_cli("INFO memory", timeout=15)

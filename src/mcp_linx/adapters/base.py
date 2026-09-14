@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 
@@ -27,6 +28,14 @@ class BaseAdapter(ABC):
     async def ping(self) -> bool:
         """Проверка доступности"""
         ...
+
+    async def execute_command(
+        self,
+        command: str,
+        timeout: int = 30,
+    ) -> dict[str, Any]:
+        """Выполнить команду (если адаптер её поддерживает)"""
+        raise NotImplementedError(f"{type(self).__name__} does not support command execution")
 
 
 class LocalAdapter(BaseAdapter):
@@ -115,7 +124,7 @@ class LocalAdapter(BaseAdapter):
     async def execute_and_parse(
         self,
         command: str,
-        parser: callable,
+        parser: Callable[[str], Any],
         timeout: int = 30,
     ) -> Any:
         """Выполнить команду и распарсить результат

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from mcp_linx.types import ToolResult
+
+if TYPE_CHECKING:
+    from mcp_linx.plugins.loki import LokiPlugin
 
 
 def _check_logql(query: str) -> str | None:
@@ -18,7 +21,7 @@ def _check_logql(query: str) -> str | None:
     return None
 
 
-async def log_search(plugin, params: dict[str, Any]) -> ToolResult:
+async def log_search(plugin: LokiPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /loki/api/v1/query_range: поиск за период"""
     query = str(params.get("query", ""))
     err = _check_logql(query)
@@ -54,7 +57,7 @@ async def log_search(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def log_labels(plugin, params: dict[str, Any]) -> ToolResult:
+async def log_labels(plugin: LokiPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /loki/api/v1/labels + values: какие сервисы пишут логи"""
     try:
         async with httpx.AsyncClient(timeout=plugin._timeout) as client:
@@ -78,7 +81,7 @@ async def log_labels(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def log_tail(plugin, params: dict[str, Any]) -> ToolResult:
+async def log_tail(plugin: LokiPlugin, params: dict[str, Any]) -> ToolResult:
     """Последние строки по селектору"""
     query = str(params.get("query", ""))
     err = _check_logql(query)

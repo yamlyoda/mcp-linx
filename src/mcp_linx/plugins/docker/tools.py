@@ -10,6 +10,7 @@ from mcp_linx.types import ToolResult
 
 async def docker_containers(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Список контейнеров с фильтрацией"""
+    adapter = plugin._require_adapter()
     all_ = params.get("all", True)
     filters = params.get("filters")
 
@@ -24,7 +25,7 @@ async def docker_containers(plugin: DockerPlugin, params: dict[str, Any]) -> Too
         filters = merged
 
     try:
-        containers = await plugin._adapter.list_containers(all_=all_, filters=filters)
+        containers = await adapter.list_containers(all_=all_, filters=filters)
         return ToolResult.ok(
             {
                 "containers": containers,
@@ -37,6 +38,7 @@ async def docker_containers(plugin: DockerPlugin, params: dict[str, Any]) -> Too
 
 async def docker_logs(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Логи контейнера"""
+    adapter = plugin._require_adapter()
     container_id = params.get("container_id")
     tail = int(params.get("tail", 100))
     since = params.get("since")
@@ -45,7 +47,7 @@ async def docker_logs(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
         return ToolResult.error("Container ID is required")
 
     try:
-        logs = await plugin._adapter.get_container_logs(container_id, tail=tail, since=since)
+        logs = await adapter.get_container_logs(container_id, tail=tail, since=since)
         return ToolResult.ok(
             {
                 "logs": logs["stdout"],
@@ -59,13 +61,14 @@ async def docker_logs(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
 
 async def docker_stats(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Статистика контейнера: CPU, память, сеть"""
+    adapter = plugin._require_adapter()
     container_id = params.get("container_id")
 
     if not container_id:
         return ToolResult.error("Container ID is required")
 
     try:
-        stats = await plugin._adapter.get_container_stats(container_id)
+        stats = await adapter.get_container_stats(container_id)
         return ToolResult.ok(stats)
     except Exception as e:
         return ToolResult.error(f"Failed to get stats: {e}")
@@ -73,11 +76,12 @@ async def docker_stats(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResu
 
 async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Полная информация о контейнере или системе"""
+    adapter = plugin._require_adapter()
     container_id = params.get("container_id")
 
     if container_id:
         try:
-            info = await plugin._adapter.get_container_info(container_id)
+            info = await adapter.get_container_info(container_id)
             return ToolResult.ok(
                 {
                     "type": "container",
@@ -92,14 +96,12 @@ async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
         try:
             import asyncio
 
+            client = await adapter._ensure_client()
+
             # Docker version
-            version = await asyncio.get_event_loop().run_in_executor(
-                None, plugin._adapter._client.version
-            )
+            version = await asyncio.get_event_loop().run_in_executor(None, client.version)
             # Docker info
-            info = await asyncio.get_event_loop().run_in_executor(
-                None, plugin._adapter._client.info
-            )
+            info = await asyncio.get_event_loop().run_in_executor(None, client.info)
 
             return ToolResult.ok(
                 {
@@ -125,12 +127,13 @@ async def docker_info(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResul
 
 async def docker_events(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Docker события (контейнеры, образы, сети)"""
+    adapter = plugin._require_adapter()
     since = params.get("since")
     until = params.get("until")
     event_filters = params.get("filters", ["container"])
 
     try:
-        events = await plugin._adapter.get_events(
+        events = await adapter.get_events(
             since=since,
             until=until,
             event_filters=event_filters,
@@ -147,8 +150,9 @@ async def docker_events(plugin: DockerPlugin, params: dict[str, Any]) -> ToolRes
 
 async def docker_system(plugin: DockerPlugin, params: dict[str, Any]) -> ToolResult:
     """Использование диска Docker"""
+    adapter = plugin._require_adapter()
     try:
-        df = await plugin._adapter.system_df()
+        df = await adapter.system_df()
         return ToolResult.ok(df)
     except Exception as e:
         return ToolResult.error(f"Failed to get system df: {e}")

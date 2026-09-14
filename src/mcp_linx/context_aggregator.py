@@ -16,7 +16,7 @@ from mcp_linx.types import (
 class ContextAggregator:
     """Агрегация контекста из нескольких плагинов для корреляции проблем"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._components: dict[str, ComponentState] = {}
 
     def add_component(self, state: ComponentState) -> None:
@@ -406,7 +406,7 @@ class ContextAggregator:
         """
         components = self.get_components()
 
-        summary = {
+        summary: dict[str, Any] = {
             "total_components": len(components),
             "healthy": 0,
             "degraded": 0,

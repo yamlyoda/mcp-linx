@@ -76,6 +76,8 @@ class NginxPlugin(DiagnosticPlugin):
         await self._adapter.connect()
 
     async def health_check(self) -> HealthStatus:
+        if self._adapter is None:
+            return HealthStatus(Status.ERROR, "Plugin not initialized")
         try:
             result = await self._adapter.execute_command("nginx -t 2>&1")
             if result["returncode"] == 0:
@@ -90,6 +92,8 @@ class NginxPlugin(DiagnosticPlugin):
 
     async def _run_command(self, command: str, timeout: int = 30) -> dict[str, Any]:
         if not self._adapter:
+            raise RuntimeError("Plugin not initialized")
+        if self._security is None:
             raise RuntimeError("Plugin not initialized")
 
         self._security.validate_command(command)

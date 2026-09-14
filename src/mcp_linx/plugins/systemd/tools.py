@@ -5,9 +5,13 @@ from __future__ import annotations
 import ipaddress
 import re
 import shlex
-from typing import Any
+from ipaddress import IPv4Address, IPv6Address
+from typing import TYPE_CHECKING, Any
 
 from mcp_linx.types import Status, ToolResult
+
+if TYPE_CHECKING:
+    from mcp_linx.plugins.systemd import SystemdPlugin
 
 _UNIT_RE = re.compile(r"^[A-Za-z0-9@:_.\-]+\.(service|socket|timer|target|mount|device)$")
 
@@ -22,7 +26,7 @@ def _decode_lpm_cidr(prefix_len: int, addr_bytes: bytes) -> str:
     """Декодировать LPM-trie ключ (prefix_len + raw bytes) в CIDR-строку."""
     try:
         if len(addr_bytes) == 4:
-            ip = ipaddress.IPv4Address(addr_bytes)
+            ip: IPv4Address | IPv6Address = ipaddress.IPv4Address(addr_bytes)
         elif len(addr_bytes) == 16:
             ip = ipaddress.IPv6Address(addr_bytes)
         else:
@@ -56,7 +60,7 @@ def _parse_bpftool_map_dump(text: str) -> list[str]:
     return cidrs
 
 
-async def service_status(plugin, params: dict[str, Any]) -> ToolResult:
+async def service_status(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemctl status/is-active/is-enabled для юнита"""
     unit = str(params.get("unit", "")).strip()
     err = _check_unit(unit)
@@ -83,7 +87,7 @@ async def service_status(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def failed_units(plugin, params: dict[str, Any]) -> ToolResult:
+async def failed_units(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemctl --failed — список упавших юнитов"""
     try:
         result = await plugin._run("systemctl --failed --no-pager --no-legend", timeout=15)
@@ -100,7 +104,7 @@ async def failed_units(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def service_logs(plugin, params: dict[str, Any]) -> ToolResult:
+async def service_logs(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """journalctl -u <unit> — логи сервиса"""
     unit = str(params.get("unit", "")).strip()
     err = _check_unit(unit)
@@ -125,7 +129,7 @@ async def service_logs(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def boot_analysis(plugin, params: dict[str, Any]) -> ToolResult:
+async def boot_analysis(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemd-analyze blame — кто тормозит загрузку"""
     try:
         top = max(5, min(int(params.get("top", 15)), 50))
@@ -144,7 +148,7 @@ async def boot_analysis(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def service_ip_filter(plugin, params: dict[str, Any]) -> ToolResult:
+async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """Эффективный IP-фильтр юнита: unit-файлы + bpftool (ground truth).
 
     `systemctl show` может скрывать фильтр, навязанный внешней системой

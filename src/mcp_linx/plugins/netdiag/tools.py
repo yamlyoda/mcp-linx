@@ -14,10 +14,11 @@ from typing import Any
 
 import httpx
 
+from mcp_linx.plugins.base import DiagnosticPlugin
 from mcp_linx.types import Status, ToolResult
 
 
-async def http_check(plugin, params: dict[str, Any]) -> ToolResult:
+async def http_check(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """HTTP(S) проверка URL: код, время, редиректы"""
     url = str(params.get("url", "")).strip()
     if not url or not url.startswith(("http://", "https://")):
@@ -52,7 +53,7 @@ async def http_check(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def tls_check(plugin, params: dict[str, Any]) -> ToolResult:
+async def tls_check(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """TLS сертификат хоста: срок, issuer, chain"""
     host = str(params.get("host", "")).strip()
     if not host:
@@ -102,7 +103,7 @@ async def tls_check(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def dns_resolve(plugin, params: dict[str, Any]) -> ToolResult:
+async def dns_resolve(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """DNS резолвинг имени через socket"""
     name = str(params.get("name", "")).strip()
     if not name:
@@ -131,7 +132,7 @@ _ALLOWED_PROBE_USERS = {"www-data", "nginx", "nobody", "app"}
 _HOST_RE = re.compile(r"^[A-Za-z0-9.\-:]{1,253}$")
 
 
-async def tcp_connect(plugin, params: dict[str, Any]) -> ToolResult:
+async def tcp_connect(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """TCP connect к host:port"""
     host = str(params.get("host", "")).strip()
     if not host:
@@ -158,7 +159,7 @@ async def tcp_connect(plugin, params: dict[str, Any]) -> ToolResult:
         )
 
 
-async def tcp_connect_as(plugin, params: dict[str, Any]) -> ToolResult:
+async def tcp_connect_as(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """TCP-проба от имени сервисного пользователя (per-uid фильтры).
 
     Кейс INCIDENT_504: root/app могут, www-data — нет (nft skuid).
@@ -217,7 +218,7 @@ async def tcp_connect_as(plugin, params: dict[str, Any]) -> ToolResult:
     )
 
 
-async def tcpdump_probe(plugin, params: dict[str, Any]) -> ToolResult:
+async def tcpdump_probe(plugin: DiagnosticPlugin, params: dict[str, Any]) -> ToolResult:
     """Короткий tcpdump-срез: есть ли пакеты к host:port.
 
     0 пакетов при активном connect() = дроп ниже интерфейса.

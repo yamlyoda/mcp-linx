@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp_linx.adapters.base import BaseAdapter, LocalAdapter
 from mcp_linx.adapters.ssh import SSHAdapter
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
@@ -101,7 +103,7 @@ class KubernetesPlugin(DiagnosticPlugin):
             parts += ["--context", shlex.quote(self._context)]
         return " ".join(parts)
 
-    async def _run(self, command: str, timeout: int = 20):
+    async def _run(self, command: str, timeout: int = 20) -> dict[str, Any]:
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
         self._security.validate_command(command)

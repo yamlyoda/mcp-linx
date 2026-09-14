@@ -21,8 +21,8 @@ class PostgresPlugin(DiagnosticPlugin):
     )
     version = "1.0.0"
 
-    def __init__(self):
-        self._conn = None
+    def __init__(self) -> None:
+        self._conn: Any = None
         self._config: PluginConfig | None = None
 
     def get_tools(self) -> list[PluginTool]:
@@ -58,7 +58,7 @@ class PostgresPlugin(DiagnosticPlugin):
 
     async def _connect_sync(self) -> None:
         """Синхронное подключение к PostgreSQL"""
-        config = self._config or {}
+        config: dict[str, Any] = self._config or {}
 
         host = config.get("host", "localhost")
         port = int(config.get("port", 5432))
@@ -103,7 +103,9 @@ class PostgresPlugin(DiagnosticPlugin):
             self._conn.close()
             self._conn = None
 
-    async def _execute_query(self, query: str, params: tuple | None = None) -> list[dict[str, Any]]:
+    async def _execute_query(
+        self, query: str, params: tuple[Any, ...] | None = None
+    ) -> list[dict[str, Any]]:
         """Выполнить SQL запрос и вернуть результат как список dict"""
         if not self._conn:
             await self._connect_sync()
@@ -118,7 +120,7 @@ class PostgresPlugin(DiagnosticPlugin):
             return []
 
     async def _execute_query_one(
-        self, query: str, params: tuple | None = None
+        self, query: str, params: tuple[Any, ...] | None = None
     ) -> dict[str, Any] | None:
         """Выполнить SQL запрос и вернуть одну строку"""
         results = await self._execute_query(query, params)

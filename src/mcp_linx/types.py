@@ -95,7 +95,7 @@ class DiagnosticContext:
     correlations: list[Correlation] | None = None
 
 
-class PluginConfig(dict):
+class PluginConfig(dict[str, Any]):
     """Конфигурация плагина — наследуем dict для гибкости"""
 
     pass

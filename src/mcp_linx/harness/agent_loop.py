@@ -8,13 +8,16 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
 from fastmcp import FastMCP
 
 from mcp_linx.audit import AuditLogger
+from mcp_linx.context_aggregator import ContextAggregator
 from mcp_linx.harness.plugin_manager import PluginManager
+from mcp_linx.plugins.base import DiagnosticPlugin
 from mcp_linx.ratelimit import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -57,8 +60,8 @@ class DefaultAgentLoop(AgentLoop):
     и запускает стандартный цикл обработки.
     """
 
-    def __init__(self):
-        self._context_aggregator = None
+    def __init__(self) -> None:
+        self._context_aggregator: ContextAggregator | None = None
         self._audit_logger: AuditLogger | None = None
         self._rate_limiter: RateLimiter | None = None
         self._config: dict[str, Any] | None = None
@@ -67,8 +70,6 @@ class DefaultAgentLoop(AgentLoop):
         self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
     ) -> None:
         """Настройка MCP сервера."""
-        from mcp_linx.context_aggregator import ContextAggregator
-
         self._config = config
         self._context_aggregator = ContextAggregator()
 
@@ -129,6 +130,11 @@ class DefaultAgentLoop(AgentLoop):
         """Заполнить агрегатор состояниями из health check (UNKNOWN при ошибке)."""
         from mcp_linx.types import ComponentState, Status
 
+        context_aggregator = self._context_aggregator
+        if context_aggregator is None:
+            logger.warning("ContextAggregator not initialized, skipping health seeding")
+            return
+
         try:
             results = await plugin_manager.health_check_all()
         except Exception as e:
@@ -136,7 +142,7 @@ class DefaultAgentLoop(AgentLoop):
             return
 
         for plugin_id, health in results.items():
-            self._context_aggregator.add_component(
+            context_aggregator.add_component(
                 ComponentState(
                     plugin_id=plugin_id,
                     status=health.status,
@@ -149,9 +155,16 @@ class DefaultAgentLoop(AgentLoop):
                 )
             )
 
-    def _make_handler(self, plugin, tool_name: str, execute_func):
+    def _make_handler(
+        self,
+        plugin: DiagnosticPlugin,
+        tool_name: str,
+        execute_func: Callable[[DiagnosticPlugin, dict[str, Any]], Any],
+    ) -> Callable[[dict[str, Any] | None], Coroutine[Any, Any, dict[str, Any]]]:
         """Создание обработчика инструмента."""
         context_aggregator = self._context_aggregator
+        if context_aggregator is None:
+            raise RuntimeError("ContextAggregator is not initialized; call setup() first")
         audit_logger = self._audit_logger
         rate_limiter = self._rate_limiter
 
@@ -177,7 +190,9 @@ class DefaultAgentLoop(AgentLoop):
                 result = await execute_func(plugin, params)
 
                 # Добавляем метаданные
-                result_dict = result.to_dict() if hasattr(result, "to_dict") else result
+                result_dict: dict[str, Any] = (
+                    result.to_dict() if hasattr(result, "to_dict") else result
+                )
                 result_dict["metadata"] = result_dict.get("metadata", {})
                 result_dict["metadata"]["plugin"] = plugin.id
                 result_dict["metadata"]["tool"] = tool_name
@@ -220,6 +235,8 @@ class DefaultAgentLoop(AgentLoop):
     def _register_system_tools(self, mcp: FastMCP, plugin_manager: PluginManager) -> None:
         """Регистрация системных инструментов."""
         context_aggregator = self._context_aggregator
+        if context_aggregator is None:
+            raise RuntimeError("ContextAggregator is not initialized; call setup() first")
 
         @mcp.tool(
             name="get_diagnostic_context",

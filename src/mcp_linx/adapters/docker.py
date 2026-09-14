@@ -39,12 +39,18 @@ class DockerAdapter(BaseAdapter):
             self._client.close()
             self._client = None
 
+    async def _ensure_client(self) -> docker.DockerClient:
+        """Гарантировать подключение и вернуть клиент (не-Optional)."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None, "connect() must establish the client"
+        return self._client
+
     async def ping(self) -> bool:
         """Проверка Docker доступности"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
         try:
-            self._client.ping()
+            client.ping()
             return True
         except Exception:
             return False
@@ -56,16 +62,13 @@ class DockerAdapter(BaseAdapter):
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """Список контейнеров"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
         containers = await loop.run_in_executor(
             None,
-            lambda: self._client.containers.list(
-                all=all_, filters=self._normalize_filters(filters)
-            ),
+            lambda: client.containers.list(all=all_, filters=self._normalize_filters(filters)),
         )
 
         result = [
@@ -132,14 +135,13 @@ class DockerAdapter(BaseAdapter):
         since: str | None = None,
     ) -> dict[str, Any]:
         """Получить логи контейнера"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
         container = await loop.run_in_executor(
             None,
-            lambda: self._client.containers.get(container_id),
+            lambda: client.containers.get(container_id),
         )
 
         logs = await loop.run_in_executor(
@@ -155,14 +157,13 @@ class DockerAdapter(BaseAdapter):
 
     async def get_container_stats(self, container_id: str) -> dict[str, Any]:
         """Получить статистику контейнера (CPU, memory, network)"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
         container = await loop.run_in_executor(
             None,
-            lambda: self._client.containers.get(container_id),
+            lambda: client.containers.get(container_id),
         )
 
         stats = await loop.run_in_executor(None, lambda: container.stats(stream=False))
@@ -192,13 +193,12 @@ class DockerAdapter(BaseAdapter):
 
     async def get_container_info(self, container_id: str) -> dict[str, Any]:
         """Полная информация о контейнере (attrs)."""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
         def _get() -> dict[str, Any]:
-            container = self._client.containers.get(container_id)
+            container = client.containers.get(container_id)
             return dict(container.attrs or {})
 
         return await loop.run_in_executor(None, _get)
@@ -210,8 +210,7 @@ class DockerAdapter(BaseAdapter):
         event_filters: list[str] | dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Docker events: поток останавливаем после короткого окна, иначе зависнет."""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
@@ -228,7 +227,7 @@ class DockerAdapter(BaseAdapter):
                 kwargs["until"] = until
             events = []
             # Берём максимум несколько событий чтобы не блокировать executor надолго
-            for i, event in enumerate(self._client.events(**kwargs)):
+            for i, event in enumerate(client.events(**kwargs)):
                 events.append(event)
                 if i >= 19:
                     break
@@ -241,12 +240,11 @@ class DockerAdapter(BaseAdapter):
 
     async def system_df(self) -> dict[str, Any]:
         """Информация об использовании диска Docker"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
-        df = await loop.run_in_executor(None, lambda: self._client.api.df())
+        df = await loop.run_in_executor(None, lambda: client.api.df())
 
         return {
             "Containers": {
@@ -272,14 +270,13 @@ class DockerAdapter(BaseAdapter):
         Returns:
             Результат удаления: контейнеры, объём освобождённого места
         """
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
         result = await loop.run_in_executor(
             None,
-            lambda: self._client.containers.prune(filters=filters or {}),
+            lambda: client.containers.prune(filters=filters or {}),
         )
 
         return {

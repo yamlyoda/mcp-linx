@@ -52,7 +52,15 @@ class DockerPlugin(DiagnosticPlugin):
         self._adapter = DockerAdapter(config)
         await self._adapter.connect()
 
+    def _require_adapter(self) -> DockerAdapter:
+        """Вернуть адаптер или выбросить ошибку инициализации."""
+        if self._adapter is None:
+            raise RuntimeError("Docker plugin not initialized")
+        return self._adapter
+
     async def health_check(self) -> HealthStatus:
+        if self._adapter is None:
+            return HealthStatus(Status.ERROR, "Plugin not initialized")
         try:
             ping_result = await self._adapter.ping()
             return HealthStatus(

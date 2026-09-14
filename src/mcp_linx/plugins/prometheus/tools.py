@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from mcp_linx.types import ToolResult
+
+if TYPE_CHECKING:
+    from mcp_linx.plugins.prometheus import PrometheusPlugin
 
 
 def _check_promql(query: str) -> str | None:
@@ -18,7 +21,7 @@ def _check_promql(query: str) -> str | None:
     return None
 
 
-async def prom_query(plugin, params: dict[str, Any]) -> ToolResult:
+async def prom_query(plugin: PrometheusPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/query?query=<PromQL>"""
     query = str(params.get("query", ""))
     err = _check_promql(query)
@@ -42,7 +45,7 @@ async def prom_query(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def prom_range(plugin, params: dict[str, Any]) -> ToolResult:
+async def prom_range(plugin: PrometheusPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/query_range: история метрики"""
     query = str(params.get("query", ""))
     err = _check_promql(query)
@@ -69,7 +72,7 @@ async def prom_range(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def prom_alerts(plugin, params: dict[str, Any]) -> ToolResult:
+async def prom_alerts(plugin: PrometheusPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/alerts: firing/pending алерты"""
     try:
         async with httpx.AsyncClient(timeout=plugin._timeout) as client:
@@ -87,7 +90,7 @@ async def prom_alerts(plugin, params: dict[str, Any]) -> ToolResult:
         return ToolResult.error(str(e))
 
 
-async def prom_targets(plugin, params: dict[str, Any]) -> ToolResult:
+async def prom_targets(plugin: PrometheusPlugin, params: dict[str, Any]) -> ToolResult:
     """GET /api/v1/targets: up/down scrape targets"""
     try:
         async with httpx.AsyncClient(timeout=plugin._timeout) as client:

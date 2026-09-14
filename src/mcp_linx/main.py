@@ -11,12 +11,14 @@ import signal
 import sys
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastmcp import FastMCP
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mcp_linx.harness import (
+    AgentLoop,
     DefaultAgentLoop,
     PluginManager,
     StreamingAgentLoop,
@@ -48,19 +50,20 @@ logging.basicConfig(
 logger = logging.getLogger("mcp_linx")
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> dict[str, Any]:
     """Загрузить YAML-конфигурацию."""
     config_file = Path(path)
     if config_file.exists():
         with open(config_file) as f:
-            return yaml.safe_load(f) or {}
+            result: dict[str, Any] = yaml.safe_load(f) or {}
+            return result
     logger.warning(f"Config file not found: {path}, using defaults")
     return {}
 
 
-def get_agent_loop(loop_type: str):
+def get_agent_loop(loop_type: str) -> AgentLoop:
     """Получить агентный цикл по типу."""
-    loops = {
+    loops: dict[str, type[AgentLoop]] = {
         "default": DefaultAgentLoop,
         "streaming": StreamingAgentLoop,
     }
@@ -69,7 +72,7 @@ def get_agent_loop(loop_type: str):
     return loop_class()
 
 
-async def start_server():
+async def start_server() -> None:
     """Запустить MCP сервер."""
     # Загрузка конфигурации
     config = load_config(settings.config_path)
@@ -110,11 +113,11 @@ async def start_server():
         await agent_loop.shutdown(mcp, plugin_manager)
 
 
-async def main():
+async def main() -> None:
     """Точка входа для запуска сервера."""
-    plugin_manager_ref = {}
+    plugin_manager_ref: dict[str, PluginManager] = {}
 
-    async def shutdown_handler():
+    async def shutdown_handler() -> None:
         if plugin_manager_ref.get("manager"):
             await plugin_manager_ref["manager"].destroy_all()
 

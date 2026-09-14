@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 import paramiko
@@ -77,7 +78,10 @@ class SSHAdapter(BaseAdapter):
         elif self._password:
             connect_kwargs["password"] = self._password
 
-        self._client.connect(**connect_kwargs)
+        client = self._client
+        if client is None:
+            raise RuntimeError("SSH client not initialized")
+        client.connect(**connect_kwargs)
 
     async def disconnect(self) -> None:
         """Закрыть SSH-соединение"""
@@ -85,13 +89,19 @@ class SSHAdapter(BaseAdapter):
             self._client.close()
             self._client = None
 
+    async def _ensure_client(self) -> paramiko.SSHClient:
+        """Гарантировать подключение и вернуть клиент (не-Optional)."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None, "connect() must establish the client"
+        return self._client
+
     async def ping(self) -> bool:
         """Проверка SSH-доступности"""
-        if not self._client:
-            await self.connect()
+        client = await self._ensure_client()
         try:
-            stdin, stdout, stderr = self._client.exec_command("echo OK", timeout=5)
-            return stdout.read().decode().strip() == "OK"
+            stdin, stdout, stderr = client.exec_command("echo OK", timeout=5)
+            return bool(stdout.read().decode().strip() == "OK")
         except Exception:
             return False
 
@@ -109,8 +119,7 @@ class SSHAdapter(BaseAdapter):
         Returns:
             dict с stdout, stderr, returncode
         """
-        if not self._client:
-            await self.connect()
+        await self._ensure_client()
 
         loop = asyncio.get_event_loop()
 
@@ -143,7 +152,7 @@ class SSHAdapter(BaseAdapter):
     async def execute_and_parse(
         self,
         command: str,
-        parser: callable,
+        parser: Callable[[str], Any],
         timeout: int = 30,
     ) -> Any:
         """Выполнить команду и распарсить результат"""
