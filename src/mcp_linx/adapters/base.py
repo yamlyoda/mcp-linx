@@ -55,7 +55,7 @@ class LocalAdapter(BaseAdapter):
             try:
                 proc.terminate()
                 await proc.wait()
-            except Exception:
+            except Exception:  # noqa: S110  # cleanup best-effort  # nosec B110
                 pass
         self._pool.clear()
 

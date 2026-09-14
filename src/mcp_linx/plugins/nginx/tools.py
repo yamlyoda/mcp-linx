@@ -99,7 +99,7 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
                 if v is not None:
                     proxy_rt_s = v
     except Exception:
-        pass
+        pass  # чтение опционального атрибута конфига  # nosec B110
     if proxy_ct_s is not None:
         results["proxy_connect_timeout_s"] = proxy_ct_s
     if proxy_rt_s is not None:

@@ -198,6 +198,31 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 
 ---
 
+## CI Vulnerability Scanning (added 2026-09)
+
+CI job `security` (`.github/workflows/ci.yml`) запускается параллельно с lint/test на каждый push/PR:
+
+| Инструмент | Что проверяет | Команда |
+|------------|---------------|---------|
+| **Bandit** (SAST) | Уязвимости в коде: инъекции, hardcoded секреты, небезопасные вызовы | `bandit -c pyproject.toml -r src/mcp_linx` |
+| **pip-audit** (SCA) | Известные CVE во всех зависимостях (PyPI Advisory DB / OSV) | `pip-audit --skip-editable` |
+| **Gitleaks** | Секреты/токены/пароли в коде и git-истории | `gitleaks/gitleaks-action@v2` |
+
+Локальный прогон:
+```bash
+bandit -c pyproject.toml -r src/mcp_linx   # 0 findings
+pip-audit --skip-editable                  # No known vulnerabilities found
+```
+
+Подавления (`# nosec <ID>`) допустимы только с обоснованием в комментарии **перед** маркером:
+`# <причина>  # nosec B601`. Сейчас обоснованы: B101 (инварианты после connect), B110
+(intentional cleanup), B507 (opt-in ветки конфига SSH, дефолт reject), B601 (команды проходят
+`SecurityGuard.validate_command` / статические).
+
+Дополнительно по результатам аудита bandit исправлены **2 реальных места SQL-интерполяции**
+в `postgres/tools.py` (`pg_locks` pid, `pg_slow_queries` threshold/limit) — переведены на
+параметризованные запросы `%s`.
+
 ## Files Checked
 
 | File | Status | Notes |

@@ -33,9 +33,9 @@ class SSHAdapter(BaseAdapter):
         # Допустимые значения: reject | warning | auto_add
         policy = str(self.config.get("host_key_policy", "reject")).lower()
         if policy == "auto_add":
-            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # opt-in через конфиг, дефолт reject  # nosec B507
         elif policy == "warning":
-            self._client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            self._client.set_missing_host_key_policy(paramiko.WarningPolicy())  # opt-in через конфиг, дефолт reject  # nosec B507
         else:
             self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
@@ -49,7 +49,7 @@ class SSHAdapter(BaseAdapter):
         except Exception:
             # Отсутствие known_hosts не блокирует подключение,
             # но RejectPolicy отклонит неизвестный хост.
-            pass
+            pass  # known_hosts опциональны  # nosec B110
 
         await loop.run_in_executor(
             None,
@@ -93,14 +93,14 @@ class SSHAdapter(BaseAdapter):
         """Гарантировать подключение и вернуть клиент (не-Optional)."""
         if self._client is None:
             await self.connect()
-        assert self._client is not None, "connect() must establish the client"
+        assert self._client is not None, "connect() must establish the client"  # инвариант; при -O AttributeError перехватывается выше  # nosec B101
         return self._client
 
     async def ping(self) -> bool:
         """Проверка SSH-доступности"""
         client = await self._ensure_client()
         try:
-            stdin, stdout, stderr = client.exec_command("echo OK", timeout=5)
+            stdin, stdout, stderr = client.exec_command("echo OK", timeout=5)  # статическая команда без пользовательского ввода  # nosec B601
             return bool(stdout.read().decode().strip() == "OK")
         except Exception:
             return False
@@ -136,7 +136,7 @@ class SSHAdapter(BaseAdapter):
             raise RuntimeError("SSH client not connected")
 
         stdin, stdout, stderr = self._client.exec_command(
-            command,
+            command,  # команда прошла SecurityGuard.validate_command (allowlist + readonly)  # nosec B601
             timeout=timeout,
         )
 

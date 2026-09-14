@@ -179,7 +179,7 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
 
         blocking_info = []
         for blocked in blocked_locks:
-            blocking_query = f"""
+            blocking_query = """
             SELECT
                 l2.pid AS blocking_pid,
                 l2.mode AS blocking_mode,
@@ -189,10 +189,12 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
             FROM pg_locks l2
             JOIN pg_stat_activity a2 ON l2.pid = a2.pid
             WHERE l2.granted = true
-              AND l2.pid != {blocked["pid"]}
+              AND l2.pid != %s
             LIMIT 1;
             """
-            blocking = await plugin._execute_query(blocking_query)
+            blocking = await plugin._execute_query(
+                blocking_query, (blocked["pid"],)
+            )
             if blocking:
                 blocking_info.append(
                     {
@@ -274,18 +276,18 @@ async def pg_slow_queries(plugin: PostgresPlugin, params: dict[str, Any]) -> Too
         threshold_ms = int(params.get("threshold_ms", 1000))
         limit = min(int(params.get("limit", 20)), 100)
 
-        query = f"""
+        query = """
         SELECT
             query, calls, total_exec_time, mean_exec_time,
             min_exec_time, max_exec_time, rows,
             shared_blks_hit, shared_blks_read, shared_blks_written
         FROM pg_stat_statements
-        WHERE mean_exec_time > {threshold_ms}
+        WHERE mean_exec_time > %s
         ORDER BY mean_exec_time DESC
-        LIMIT {limit};
+        LIMIT %s;
         """
 
-        slow_queries = await plugin._execute_query(query)
+        slow_queries = await plugin._execute_query(query, (threshold_ms, limit))
 
         return ToolResult.ok(
             {

@@ -43,3 +43,23 @@ jobs:
           print(f'plugins: {n} | tools: {len(pm.get_tools())}')
           assert n >= 10 and len(pm.get_tools()) >= 50
           "
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks требует полную историю
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Bandit (SAST — статический анализ кода)
+        run: bandit -c pyproject.toml -r src/mcp_linx
+      - name: pip-audit (уязвимости зависимостей, CVE)
+        run: pip-audit --skip-editable
+      - name: Gitleaks (секреты в коде и истории)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
