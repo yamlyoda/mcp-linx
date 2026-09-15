@@ -153,6 +153,7 @@ plugins:
 
   kubernetes:
     namespace: "default"
+```
 
 ---
 
