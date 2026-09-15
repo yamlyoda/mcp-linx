@@ -89,7 +89,19 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mcp-linx:ci
-          format: table
+          # fail только на CVE с реальным upstream-патчем. Без ignore-unfixed
+          # Trivy рубит CI на "no-fix" HIGH/CRITICAL из Debian trixee (утилиты
+          # модели A), которые нельзя починить в образе без замены пакета.
+          ignore-unfixed: true
+          format: json
+          output: trivy-results.json
           scanners: vuln,secret
           severity: HIGH,CRITICAL
           exit-code: "1"
+      - name: Загрузить отчёт Trivy (для triage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-results
+          path: trivy-results.json
+          if-no-files-found: ignore

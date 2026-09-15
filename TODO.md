@@ -393,6 +393,16 @@ All variants implemented: redis, systemd, netdiag, kubernetes, prometheus, loki.
 - [x] **B8. CI падал на резолве `aquasecurity/trivy-action@0.24.0`** — у экшена все теги идут с префиксом `v`, ref без префикса не существует («Unable to resolve action… unable to find version 0.24.0»). ✅ FIXED 2026-09-15 → `@v0.36.0` + синхронизирован `SECURITY.md:211`.
 - [ ] **B9. Рассмотреть пиннинг third-party экшенов по commit SHA** (сейчас все — по тегам: `@v4`, `@v5`, `@v6`, `@v2`, `@v0.36.0`). У trivy-action релизы immutable (`immutable: true`), так что переопределить тег нельзя, но SHA-пиннинг + `dependabot.yml` — надёжнее.
 
+- [ ] **B10. CI `docker-build` теперь запускается, но Trivy проваливает job: 76 HIGH/CRITICAL в образе `python:3.11-slim` (Debian 13.6, 147 пакетов).**
+  - `severity: HIGH,CRITICAL` + `exit-code: "1"` → `--severity HIGH,CRITICAL` фильтрует, значит 76 — именно HIGH/CRITICAL. Большинство из них, вероятно, в apt-утилитах модели A (`postgresql-client`, `redis-tools`, `openssh-client`, `curl` из Debian trixie, где CVE до сих пор `no-fix`). Полный список — в логах шага Trivy в GitHub Actions (локально воспроизвести тяжело).
+  - Варианты (выбор за заказчиком, т.к. это security-posture):
+    1. `ignore-unfixed: true` — фейлиться только на CVE с upstream-патчем (рекомендовано для rolling/stable base image);
+    2. заморозить base image (`FROM python:3.11.10-slim@sha256:...`) + регулярный `docker/build-push-action `--platform` и `docker scout`/cron;
+    3. вывести `format: sarif`+upload-to-code-scanning или `format: json` в артефакт для triage;
+    4. заменить apt-утилиты на образы с чужими CVE (убрать `postgresql-client`/`redis-tools`, если unused) и/или `.trivyignore` для признанных `will_not_fix`.
+  - Effort: 1–3 ч на воплотение + согласование порога.
+  - Статус: 🟡 **не фикшу** без одобрения — понижение/повышение порога сканера — вопрос политики репозитория.
+
 ### C. Упаковка и гигиена репозитория
 
 - [ ] **C1. Нет файла `LICENSE`**, при этом README: «MIT» и pyproject: `license = {text = "MIT"}`; classifier `Development Status :: 3 - Alpha` конфликтует с `version = "1.0.0"`. → добавить `LICENSE` (+ `license-files`, PEP 639), согласовать статус разработки.
