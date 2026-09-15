@@ -55,8 +55,8 @@ plugins/
 
 ```python
 class DiagnosticPlugin(ABC):
-    id: str = ""           # Unique identifier
-    name: str = ""         # Display name
+    id: str = ""  # Unique identifier
+    name: str = ""  # Display name
     description: str = ""  # Plugin description
 
     @abstractmethod

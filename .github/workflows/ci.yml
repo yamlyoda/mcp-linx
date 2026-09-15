@@ -63,3 +63,31 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: mcp-linx:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test — MCP initialize по stdio
+        run: |
+          resp=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            | docker run -i --rm mcp-linx:ci)
+          echo "$resp" | head -1
+          echo "$resp" | grep -q '"serverInfo"' && echo "MCP stdio OK"
+      - name: Trivy — скан образа (CVE + секреты)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: mcp-linx:ci
+          format: table
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"

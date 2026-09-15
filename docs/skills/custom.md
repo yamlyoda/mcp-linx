@@ -19,6 +19,7 @@ touch plugins/my_skill/tools.py
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 
+
 class MySkillPlugin(DiagnosticPlugin):
     id = "my_skill"
     name = "My Skill"
@@ -26,6 +27,7 @@ class MySkillPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from .tools import my_tool
+
         return [PluginTool("my_tool", "Description", my_tool)]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -45,6 +47,7 @@ class MySkillPlugin(DiagnosticPlugin):
 from typing import Any
 from mcp_linx.plugins.my_skill import MySkillPlugin
 from mcp_linx.types import ToolResult
+
 
 async def my_tool(plugin: MySkillPlugin, params: dict[str, Any]) -> ToolResult:
     try:

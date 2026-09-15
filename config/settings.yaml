@@ -32,7 +32,7 @@ plugins:
     - kubernetes
     - prometheus
     - loki
-  
+
   linux:
     enabled: true
     # Если SSH не указан — используется локальный хост
@@ -44,7 +44,7 @@ plugins:
       password: null      # не рекомендуется
       host_key_policy: "reject"  # reject | warning | auto_add (защита от MITM)
       known_hosts: null   # путь к known_hosts (null = системный ~/.ssh/known_hosts)
-  
+
   nginx:
     enabled: true
     config_path: "/etc/nginx/nginx.conf"
@@ -58,7 +58,7 @@ plugins:
       port: 22
       username: null
       key_file: null
-  
+
   docker:
     enabled: true
     # Docker socket или remote API
@@ -67,7 +67,7 @@ plugins:
     # Фильтры по умолчанию
     filters:
       status: "running"  # по умолчанию показывать running контейнеры
-  
+
   postgres:
     enabled: true
     # Подключение к PostgreSQL
@@ -145,13 +145,13 @@ logging:
     json:
       class: structlog.stdlib.ProcessorFormatter
       format: "%(message)s"
-  
+
   handlers:
     console:
       class: logging.StreamHandler
       level: INFO
       formatter: console
-  
+
   root:
     level: INFO
     handlers: [console]

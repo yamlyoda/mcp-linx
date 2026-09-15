@@ -58,8 +58,8 @@ await mcp.run_async()
 # Вместо хардкода в main.py
 class AgentLoop(ABC):
     @abstractmethod
-    async def run(self, mcp, plugins, config):
-        ...
+    async def run(self, mcp, plugins, config): ...
+
 
 class DefaultAgentLoop(AgentLoop):
     async def run(self, mcp, plugins, config):
@@ -75,6 +75,7 @@ class DefaultAgentLoop(AgentLoop):
 ```python
 from mcp_linx.plugins.linux import LinuxPlugin
 from mcp_linx.plugins.nginx import NginxPlugin
+
 # ...
 register_plugin(LinuxPlugin)
 register_plugin(NginxPlugin)
@@ -93,7 +94,11 @@ def discover_plugins():
             module = importlib.import_module(f"mcp_linx.plugins.{plugin_dir.name}")
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                if isinstance(attr, type) and issubclass(attr, DiagnosticPlugin) and attr != DiagnosticPlugin:
+                if (
+                    isinstance(attr, type)
+                    and issubclass(attr, DiagnosticPlugin)
+                    and attr != DiagnosticPlugin
+                ):
                     register_plugin(attr)
 ```
 
@@ -109,13 +114,14 @@ def discover_plugins():
 ```python
 class Sandbox(ABC):
     @abstractmethod
-    async def execute(self, command: str) -> dict:
-        ...
+    async def execute(self, command: str) -> dict: ...
+
 
 class LocalSandbox(Sandbox):
     async def execute(self, command: str) -> dict:
         # Локальное выполнение
         ...
+
 
 class DockerSandbox(Sandbox):
     async def execute(self, command: str) -> dict:
@@ -135,15 +141,15 @@ class DockerSandbox(Sandbox):
 ```python
 class ContextCompactor(ABC):
     @abstractmethod
-    def compact(self, messages: list) -> list:
-        ...
+    def compact(self, messages: list) -> list: ...
+
 
 class SlidingWindowCompactor(ContextCompactor):
     def __init__(self, max_messages: int = 50):
         self.max_messages = max_messages
-    
+
     def compact(self, messages: list) -> list:
-        return messages[-self.max_messages:]
+        return messages[-self.max_messages :]
 ```
 
 ---

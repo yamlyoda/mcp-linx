@@ -16,31 +16,35 @@ from mcp_linx.main import start_server
 
 async def run_with_inspector():
     """Запуск сервера в режиме совместимости с MCP Inspector"""
-    import os
-    
+
     # MCP Inspector ожидает сервер на stdio
     # FastMCP по умолчанию работает через stdio
-    
+
     print("Starting mcp-linx server for MCP Inspector...", file=sys.stderr)
-    print("""
+    print(
+        """
     MCP Inspector доступен по команде:
-    
+
         npx @modelcontextprotocol/inspector node --server-command "python -m mcp_linx.main"
-    
+
     Или для Python:
-    
+
         uvx mcp-inspector python -m mcp_linx.main
-    
+
     После запуска откройте:
         http://localhost:6274  (или порт, указанный в выводе)
-    """, file=sys.stderr)
-    
+    """,
+        file=sys.stderr,
+    )
+
     # Запускаем сервер
     await start_server()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MCP-Linx Server — диагностика Linux-инфраструктуры")
+    parser = argparse.ArgumentParser(
+        description="MCP-Linx Server — диагностика Linux-инфраструктуры"
+    )
     parser.add_argument(
         "--inspector",
         action="store_true",
@@ -57,18 +61,20 @@ def main():
         action="store_true",
         help="Диагностический режим (подробное логирование)",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.debug:
         import logging
+
         logging.getLogger("mcp_linx").setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     # Установка пути к конфигурации
     import os
+
     os.environ["MCP_LINX_CONFIG"] = args.config
-    
+
     asyncio.run(run_with_inspector())
 
 

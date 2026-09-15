@@ -1,0 +1,38 @@
+# =============================================================================
+# MCP-Linx в Docker
+#
+# Профиль A (по умолчанию) — «diagnostic control plane»: изолированный
+# контейнер диагностирует УДАЛЁННЫЕ хосты по SSH и сервисы по сети
+# (postgres, redis, prometheus, loki, k8s). Клиенты MCP подключаются так:
+#   Claude Desktop / Inspector:
+#     command: docker
+#     args: ["run", "-i", "--rm", "mcp-linx:latest"]
+#
+# Профиль B (host) — диагностика САМОГО хоста. Только Linux! Раскомментируйте
+# секцию "host-модель" ниже. ВНИМАНИЕ: docker.sock внутри контейнера даёт
+# root-доступ к хосту Docker; pid/network host разделяют пространства имён.
+# =============================================================================
+services:
+  mcp-linx:
+    build: .
+    image: mcp-linx:latest
+    stdin_open: true # stdio-транспорт MCP (docker compose run mcp-linx)
+    tty: false
+    environment:
+      CONFIG_PATH: /app/config/settings.yaml
+      # Секреты — только через env, не в config-файле:
+      # LINX_SSH_PASSWORD: ${LINX_SSH_PASSWORD}
+      # LINX_LOG_LEVEL: ${LINX_LOG_LEVEL:-INFO}
+    volumes:
+      - ./config:/app/config:ro
+      # SSH-ключи к целевым хостам (модель A).
+      # Если UID на хосте != UID в контейнере, добавьте user: "${UID}:${GID}"
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/mcp/.ssh:ro
+
+    # ---------------- host-модель (Model B, только Linux) ----------------
+    # pid: "host"                # /proc хоста: linux_processes, linux_host_stats
+    # network_mode: host         # сетевые проверки против хоста (netdiag, nginx)
+    # volumes:
+    #   - /var/log:/var/log:ro             # nginx/systemd/linux логи
+    #   - /etc/nginx:/etc/nginx:ro         # конфиги nginx
+    #   - /var/run/docker.sock:/var/run/docker.sock  # docker-плагин (ВНИМАНИЕ: root-доступ)

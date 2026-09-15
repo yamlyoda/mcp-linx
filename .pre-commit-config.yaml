@@ -1,0 +1,47 @@
+# Pre-commit hooks: то же, что и в CI (.github/workflows/ci.yml), но до коммита.
+# Установка: pip install -e ".[dev]" && pre-commit install
+# Разовый прогон по всем файлам: pre-commit run --all-files
+repos:
+  # Базовые гигиенические проверки
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+        exclude: '\.md$'
+      - id: trailing-whitespace
+        exclude: '\.md$' # в markdown пробелы в конце строки — жёсткий перенос
+
+  # Ruff: линтер + форматтер (те же правила, что в CI)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Gitleaks: секреты в staged-файлах
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  # Локальные хуки — используют venv проекта (mypy/bandit уже в dev-зависимостях)
+  - repo: local
+    hooks:
+      - id: bandit
+        name: bandit (SAST)
+        entry: .venv/bin/bandit
+        args: ["-c", "pyproject.toml", "-r", "src/mcp_linx", "-q"]
+        language: system
+        pass_filenames: false
+        files: ^src/
+      - id: mypy
+        name: mypy
+        entry: .venv/bin/python -m mypy src/mcp_linx
+        language: system
+        pass_filenames: false
+        files: ^src/

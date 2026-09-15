@@ -1,0 +1,25 @@
+# Всё, что не нужно в образе
+.venv/
+.git/
+.github/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Документация и рабочие файлы
+docs/
+tests/
+TODO.md
+diagnosis_state.md
+*.log
+
+# Docker-файлы (контекст не должен включать сам себя рекурсивно)
+Dockerfile
+docker-compose.yml
+.dockerignore

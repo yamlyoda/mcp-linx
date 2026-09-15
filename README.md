@@ -50,6 +50,48 @@ python -m mcp_linx.main
 npx @modelcontextprotocol/inspector python -m mcp_linx.main
 ```
 
+### Docker
+
+**English:**
+
+Two deployment models with the same image:
+
+- **Model A (default, safe)** — isolated container diagnosing *remote* hosts over SSH; postgres/redis/prometheus/loki/k8s over the network.
+- **Model B (host)** — diagnosing the *local* host (Linux only): requires `pid: host`, `network_mode: host` and read-only mounts (see `docker-compose.yml`). Note: mounting `docker.sock` grants root-equivalent access to the Docker host.
+
+```bash
+# Build
+docker build -t mcp-linx:latest .
+
+# Run via compose (stdio; MCP clients: command=docker, args=["run","-i","--rm","mcp-linx:latest"])
+docker compose run --rm mcp-linx
+
+# Claude Desktop / MCP Inspector config
+{
+  "mcpServers": {
+    "mcp-linx": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/absolute/path/config:/app/config:ro", "mcp-linx:latest"]
+    }
+  }
+}
+```
+
+**Русский:**
+
+Один образ — две модели запуска:
+
+- **Модель A (по умолчанию, безопасная)** — изолированный контейнер диагностирует *удалённые* хосты по SSH; postgres/redis/prometheus/loki/k8s — по сети.
+- **Модель B (host)** — диагностика *самого* хоста (только Linux): нужны `pid: host`, `network_mode: host` и read-only маунты (см. `docker-compose.yml`). Внимание: маунт `docker.sock` даёт root-доступ к хосту Docker.
+
+```bash
+# Сборка
+docker build -t mcp-linx:latest .
+
+# Запуск через compose (stdio; MCP-клиенты: command=docker, args=["run","-i","--rm","mcp-linx:latest"])
+docker compose run --rm mcp-linx
+```
+
 ---
 
 ## Configuration / Конфигурация

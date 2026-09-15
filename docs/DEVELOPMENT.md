@@ -86,6 +86,7 @@ touch plugins/my_plugin/tools.py
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 
+
 class MyPlugin(DiagnosticPlugin):
     id = "my_plugin"
     name = "My Plugin"
@@ -96,6 +97,7 @@ class MyPlugin(DiagnosticPlugin):
 
     def get_tools(self) -> list[PluginTool]:
         from .tools import my_tool
+
         return [PluginTool("my_tool", "Description", my_tool)]
 
     async def initialize(self, config: PluginConfig) -> None:
@@ -116,6 +118,7 @@ from typing import Any
 from mcp_linx.plugins.my_plugin import MyPlugin
 from mcp_linx.types import ToolResult
 
+
 async def my_tool(plugin: MyPlugin, params: dict[str, Any]) -> ToolResult:
     try:
         return ToolResult.ok({"result": "success"})
@@ -133,6 +136,7 @@ Plugin is auto-discovered on startup. No registration needed!
 # adapters/my_adapter.py
 from mcp_linx.adapters.base import BaseAdapter
 
+
 class MyAdapter(BaseAdapter):
     async def connect(self) -> None: ...
     async def disconnect(self) -> None: ...
@@ -145,6 +149,7 @@ class MyAdapter(BaseAdapter):
 ```python
 # harness/my_agent_loop.py
 from mcp_linx.harness.agent_loop import AgentLoop
+
 
 class MyAgentLoop(AgentLoop):
     async def setup(self, mcp, plugin_manager, config): ...
