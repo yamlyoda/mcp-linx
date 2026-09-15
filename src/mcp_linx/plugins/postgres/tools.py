@@ -192,9 +192,7 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
               AND l2.pid != %s
             LIMIT 1;
             """
-            blocking = await plugin._execute_query(
-                blocking_query, (blocked["pid"],)
-            )
+            blocking = await plugin._execute_query(blocking_query, (blocked["pid"],))
             if blocking:
                 blocking_info.append(
                     {

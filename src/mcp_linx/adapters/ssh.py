@@ -33,9 +33,15 @@ class SSHAdapter(BaseAdapter):
         # Допустимые значения: reject | warning | auto_add
         policy = str(self.config.get("host_key_policy", "reject")).lower()
         if policy == "auto_add":
-            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # opt-in через конфиг, дефолт reject  # nosec B507
+            # opt-in через конфиг; осознанно ослабленная проверка, дефолт — reject (anti-MITM)
+            self._client.set_missing_host_key_policy(
+                paramiko.AutoAddPolicy()  # nosec B507
+            )
         elif policy == "warning":
-            self._client.set_missing_host_key_policy(paramiko.WarningPolicy())  # opt-in через конфиг, дефолт reject  # nosec B507
+            # opt-in через конфиг; предупреждение, но подключает
+            self._client.set_missing_host_key_policy(
+                paramiko.WarningPolicy()  # nosec B507
+            )
         else:
             self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
@@ -93,14 +99,20 @@ class SSHAdapter(BaseAdapter):
         """Гарантировать подключение и вернуть клиент (не-Optional)."""
         if self._client is None:
             await self.connect()
-        assert self._client is not None, "connect() must establish the client"  # инвариант; при -O AttributeError перехватывается выше  # nosec B101
+        # Инвариант: connect() обязан создать клиент. При python -O assert исчезнет —
+        # тогда AttributeError перехватывается вызывающим кодом как обычная ошибка.
+        assert self._client is not None  # nosec B101
         return self._client
 
     async def ping(self) -> bool:
         """Проверка SSH-доступности"""
         client = await self._ensure_client()
         try:
-            stdin, stdout, stderr = client.exec_command("echo OK", timeout=5)  # статическая команда без пользовательского ввода  # nosec B601
+            # Статическая команда без пользовательского ввода
+            stdin, stdout, stderr = client.exec_command(
+                "echo OK",
+                timeout=5,  # nosec B601
+            )
             return bool(stdout.read().decode().strip() == "OK")
         except Exception:
             return False

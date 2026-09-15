@@ -43,7 +43,9 @@ class DockerAdapter(BaseAdapter):
         """Гарантировать подключение и вернуть клиент (не-Optional)."""
         if self._client is None:
             await self.connect()
-        assert self._client is not None, "connect() must establish the client"  # инвариант; при -O AttributeError перехватывается выше  # nosec B101
+        # Инвариант: connect() обязан создать клиент. При python -O assert исчезнет —
+        # тогда AttributeError перехватывается вызывающим кодом как обычная ошибка.
+        assert self._client is not None  # nosec B101
         return self._client
 
     async def ping(self) -> bool:

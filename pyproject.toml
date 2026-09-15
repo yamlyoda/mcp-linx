@@ -44,6 +44,8 @@ dev = [
     "httpx>=0.27.0",
     "bandit>=1.7.9",
     "pip-audit>=2.7.0",
+    # PYSEC-2026-3447: CVE в setuptools < 83; CI-образ python 3.11 ставит 79.x — пинуем фикс
+    "setuptools>=83.0.0",
 ]
 
 [project.scripts]
