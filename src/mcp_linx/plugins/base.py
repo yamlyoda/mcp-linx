@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_linx.types import (
     HealthStatus,
     PluginConfig,
 )
+
+if TYPE_CHECKING:
+    from mcp_linx.adapters.base import BaseAdapter
+    from mcp_linx.multihost import HostRegistry
 
 
 @dataclass
@@ -36,10 +40,38 @@ class DiagnosticPlugin(ABC):
     # Список инструментов, предоставляемых плагином
     tools: list[PluginTool] = []
 
+    # Multi-host: реестр удалённых хостов (инжектится agent_loop'ом при setup).
+    # None => плагин работает только со своим primary-адаптером.
+    hosts: HostRegistry | None = None
+
+    # Primary-адаптер плагина; устанавливается конкретной реализацией в initialize().
+    _adapter: BaseAdapter | None = None
+
     @abstractmethod
     async def initialize(self, config: PluginConfig) -> None:
         """Инициализация плагина (подключение к SSH, API, проверка доступности)"""
         ...
+
+    def _resolve_adapter(self, host: str | None = None) -> BaseAdapter:
+        """Адаптер для команды: удалённый хост по имени или primary.
+
+        Args:
+            host: имя хоста из секции `hosts:` конфига; None — primary адаптер.
+
+        Raises:
+            RuntimeError: плагин не инициализирован (host не задан).
+            KeyError: host задан, но не описан в `hosts:` конфига.
+        """
+        if host:
+            if self.hosts is None:
+                raise RuntimeError(
+                    f"Multi-host not configured: host '{host}' requested, "
+                    "but no `hosts:` section in settings.yaml"
+                )
+            return self.hosts.get_adapter(host)
+        if self._adapter is None:
+            raise RuntimeError("Plugin not initialized")
+        return self._adapter
 
     @abstractmethod
     async def health_check(self) -> HealthStatus:

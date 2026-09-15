@@ -18,34 +18,38 @@ _ALLOWED_LOG_NAMES = {"access.log", "error.log"}
 
 async def nginx_config(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Проверка конфигурации Nginx"""
+    host = params.get("host")
     results: dict[str, Any] = {}
 
     # Тест конфигурации
-    test_result = await plugin._run_command("nginx -t 2>&1")
+    test_result = await plugin._run_command("nginx -t 2>&1", host=host)
     results["config_test_output"] = test_result.get("stdout", test_result.get("stderr", ""))
     results["config_test_ok"] = test_result["returncode"] == 0
 
     # Основной конфиг
     conf_result = await plugin._run_command(
-        "grep -v '^#' /etc/nginx/nginx.conf | grep -v '^$' | head -50"
+        "grep -v '^#' /etc/nginx/nginx.conf | grep -v '^$' | head -50", host=host
     )
     results["main_config"] = conf_result.get("stdout", "Not found")
 
     # Сайты
     sites_result = await plugin._run_command(
-        "ls -la /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null || echo 'No sites configured'"
+        "ls -la /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null || echo 'No sites configured'",
+        host=host,
     )
     results["sites"] = sites_result.get("stdout", "Not found")
 
     # SSL
     ssl_result = await plugin._run_command(
-        "grep -r 'ssl_certificate' /etc/nginx/ 2>/dev/null | head -10 || echo 'No SSL configured'"
+        "grep -r 'ssl_certificate' /etc/nginx/ 2>/dev/null | head -10 || echo 'No SSL configured'",
+        host=host,
     )
     results["ssl"] = ssl_result.get("stdout", "Not found")
 
     # Worker settings
     worker_result = await plugin._run_command(
-        "grep -E 'worker_processes|worker_connections|worker_rlimit' /etc/nginx/nginx.conf 2>/dev/null || echo 'Not found'"
+        "grep -E 'worker_processes|worker_connections|worker_rlimit' /etc/nginx/nginx.conf 2>/dev/null || echo 'Not found'",
+        host=host,
     )
     results["worker_settings"] = worker_result.get("stdout", "Not found")
 
@@ -58,6 +62,7 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
     По умолчанию выполняет GET к каждому upstream-адресу (httpx, таймаут timeout).
     Добавляет схему http://, если не указана. unix-сокеты пропускаются (недоступны по HTTP).
     """
+    host = params.get("host")
     import httpx
 
     timeout = max(1, min(int(params.get("timeout", 3)), 30))
@@ -75,7 +80,8 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
         to_result = await plugin._run_command(
             "grep -rE 'proxy_(connect|read|send)_timeout' /etc/nginx/nginx.conf "
             "/etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf "
-            "2>/dev/null | head -20"
+            "2>/dev/null | head -20",
+            host=host,
         )
         to_text = to_result.get("stdout", "")
         results["proxy_timeout_config"] = to_text.strip()[:1000]
@@ -107,7 +113,8 @@ async def nginx_upstream(plugin: NginxPlugin, params: dict[str, Any]) -> ToolRes
 
     # --- 1. Поиск upstream блоков в конфиге ---
     upstream_result = await plugin._run_command(
-        "grep -A 10 'upstream' /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null | grep -v '^#' | head -100"
+        "grep -A 10 'upstream' /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null | grep -v '^#' | head -100",
+        host=host,
     )
     results["upstream_config"] = upstream_result.get("stdout", "No upstream configured")
 
@@ -258,30 +265,32 @@ async def nginx_stub_status(plugin: NginxPlugin, params: dict[str, Any]) -> Tool
 
 async def nginx_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Статус службы Nginx и процессов"""
+    host = params.get("host")
     results: dict[str, Any] = {}
 
     # Статус службы
-    systemctl_result = await plugin._run_command("systemctl status nginx --no-pager")
+    systemctl_result = await plugin._run_command("systemctl status nginx --no-pager", host=host)
     results["systemctl_status"] = systemctl_result.get("stdout", "")
     results["systemctl_code"] = systemctl_result.get("returncode", -1)
 
     # Конфигурационный тест
-    config_test_result = await plugin._run_command("nginx -t 2>&1")
+    config_test_result = await plugin._run_command("nginx -t 2>&1", host=host)
     results["config_test"] = config_test_result.get("stdout", config_test_result.get("stderr", ""))
     results["config_test_ok"] = config_test_result["returncode"] == 0
 
     # Версия
-    version_result = await plugin._run_command("nginx -v 2>&1")
+    version_result = await plugin._run_command("nginx -v 2>&1", host=host)
     results["version"] = version_result.get("stderr", version_result.get("stdout", ""))
 
     # Работающие процессы
-    ps_result = await plugin._run_command("ps aux | grep '[n]ginx'")
+    ps_result = await plugin._run_command("ps aux | grep '[n]ginx'", host=host)
     results["processes"] = ps_result.get("stdout", "")
     results["process_count"] = ps_result.get("stdout", "").count("\n")
 
     # Конфигурация worker_processes
     worker_result = await plugin._run_command(
-        "grep -E 'worker_processes|worker_connections' /etc/nginx/nginx.conf 2>/dev/null || echo 'Config not found'"
+        "grep -E 'worker_processes|worker_connections' /etc/nginx/nginx.conf 2>/dev/null || echo 'Config not found'",
+        host=host,
     )
     results["worker_config"] = worker_result.get("stdout", "Not found")
 
@@ -290,6 +299,7 @@ async def nginx_status(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResul
 
 async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
     """Чтение error и access логов Nginx"""
+    host = params.get("host")
     log_type = params.get("log_type", "error")
     lines = min(int(params.get("lines", 100)), 500)
 
@@ -326,7 +336,7 @@ async def nginx_logs(plugin: NginxPlugin, params: dict[str, Any]) -> ToolResult:
         )
 
     command = f"tail -n {lines} {log_file}"
-    result = await plugin._run_command(command)
+    result = await plugin._run_command(command, host=host)
 
     if result["returncode"] != 0:
         return ToolResult.error(f"Failed to read logs: {result['stderr']}")

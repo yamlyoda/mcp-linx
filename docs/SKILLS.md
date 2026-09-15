@@ -7,6 +7,7 @@ Skills in MCP-Linx follow the **Harness ideology**: skills are plugins that can 
 | Topic | File | Contents |
 |-------|------|----------|
 | Navigation | `skills/_index.md` | symptom to file map |
+| Remote host | `REMOTE_TROUBLESHOOTING.md` | Multi-host registry, SSH pool, `host=<name>` (linux/nginx/systemd) |
 | Ideology | `skills/core.md` | Harness, What is a Skill, Best Practices |
 | Host | `skills/linux.md` | Linux (8 tools) + Systemd (5 tools) |
 | Proxy | `skills/proxy.md` | Nginx (5 tools) |

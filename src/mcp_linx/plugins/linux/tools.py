@@ -28,6 +28,7 @@ _ALLOWED_LOG_FILES = {
 
 async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Чтение системных логов"""
+    host = params.get("host")
     log_type = params.get("log_type", "syslog")
     lines = min(int(params.get("lines", 100)), 500)
     since = params.get("since")
@@ -52,7 +53,7 @@ async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
             f"{', '.join(sorted(_ALLOWED_LOG_FILES))}"
         )
 
-    result = await plugin._run_command(command)
+    result = await plugin._run_command(command, host=host)
 
     if result["returncode"] != 0:
         return ToolResult.error(f"Failed to read logs: {result['stderr']}")
@@ -83,22 +84,23 @@ async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
 
 async def linux_network(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Сетевые интерфейсы, порты, соединения"""
+    host = params.get("host")
     results: dict[str, Any] = {}
 
-    interface_result = await plugin._run_command("ip -br addr")
+    interface_result = await plugin._run_command("ip -br addr", host=host)
     results["interfaces"] = interface_result.get("stdout", "Unable to get interfaces")
 
-    ss_result = await plugin._run_command("ss -tuln")
+    ss_result = await plugin._run_command("ss -tuln", host=host)
     results["listening_ports"] = ss_result.get("stdout", "Unable to get listening ports")
 
-    conn_result = await plugin._run_command("ss -tan")
+    conn_result = await plugin._run_command("ss -tan", host=host)
     results["connections"] = conn_result.get("stdout", "")
 
-    route_result = await plugin._run_command("ip route show")
+    route_result = await plugin._run_command("ip route show", host=host)
     results["routes"] = route_result.get("stdout", "")
 
     dns_result = await plugin._run_command(
-        "cat /etc/resolv.conf 2>/dev/null || echo 'No resolv.conf'"
+        "cat /etc/resolv.conf 2>/dev/null || echo 'No resolv.conf'", host=host
     )
     results["dns"] = dns_result.get("stdout", "")
 
@@ -113,13 +115,14 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
     nft ruleset, ip rule, все таблицы маршрутов, ufw status (best-effort).
     Только чтение: nft list / ip route show / iptables -S.
     """
+    host = params.get("host")
     import re as _re
 
     results: dict[str, Any] = {}
     issues: list[str] = []
 
     # 1. nftables ruleset (read-only: только list)
-    nft = await plugin._run_command("nft list ruleset 2>&1 || echo 'NO_NFT'")
+    nft = await plugin._run_command("nft list ruleset 2>&1 || echo 'NO_NFT'", host=host)
     nft_text = nft.get("stdout", "")
     results["nft_ruleset"] = nft_text[:6000]
     results["nft_available"] = "NO_NFT" not in nft_text
@@ -150,7 +153,7 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
         issues.append(f"nft маркировки fwmark: {len(marks)} правил — проверьте ip rule/table ниже")
 
     # 2. Policy routing: ip rule + все таблицы
-    rule = await plugin._run_command("ip rule show 2>&1")
+    rule = await plugin._run_command("ip rule show 2>&1", host=host)
     rule_text = rule.get("stdout", "")
     results["ip_rules"] = rule_text[:2000]
 
@@ -158,7 +161,7 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
     tables: set[str] = set(_re.findall(r"lookup\s+(\S+)", rule_text))
     tables.update(["main", "local"])
     for tbl in sorted(tables)[:10]:
-        r = await plugin._run_command(f"ip route show table {tbl} 2>&1")
+        r = await plugin._run_command(f"ip route show table {tbl} 2>&1", host=host)
         out = r.get("stdout", "").strip()
         if out and "Error" not in out:
             policy_routes.append({"table": tbl, "routes": out[:1500]})
@@ -169,11 +172,11 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
     results["policy_routes"] = policy_routes
 
     # 3. iptables fallback (read-only: -S/-L без изменений)
-    ipt = await plugin._run_command("iptables -S 2>&1 | head -50 || echo 'NO_IPTABLES'")
+    ipt = await plugin._run_command("iptables -S 2>&1 | head -50 || echo 'NO_IPTABLES'", host=host)
     results["iptables"] = ipt.get("stdout", "")[:3000]
 
     # 4. ufw status (best-effort)
-    ufw = await plugin._run_command("ufw status verbose 2>&1 || echo 'NO_UFW'")
+    ufw = await plugin._run_command("ufw status verbose 2>&1 || echo 'NO_UFW'", host=host)
     results["ufw"] = ufw.get("stdout", "")[:1500]
 
     # 5. Опционально: ip route get для пары src->dst
@@ -181,7 +184,7 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
     if probe_dst:
         if not _re.match(r"^[A-Za-z0-9.\-:]+$", probe_dst):
             return ToolResult.error(f"Invalid probe_dst '{probe_dst}'")
-        g = await plugin._run_command(f"ip route get {probe_dst} 2>&1")
+        g = await plugin._run_command(f"ip route get {probe_dst} 2>&1", host=host)
         results["route_get"] = {probe_dst: g.get("stdout", "").strip()[:500]}
 
     if issues:
@@ -191,25 +194,28 @@ async def linux_firewall(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRes
 
 async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Использование диска и файловых систем"""
+    host = params.get("host")
     results: dict[str, Any] = {}
 
-    df_result = await plugin._run_command("df -h")
+    df_result = await plugin._run_command("df -h", host=host)
     if df_result["returncode"] == 0:
         results["disk_usage"] = df_result["stdout"]
 
-    inode_result = await plugin._run_command("df -i")
+    inode_result = await plugin._run_command("df -i", host=host)
     if inode_result["returncode"] == 0:
         results["inode_usage"] = inode_result["stdout"]
 
-    lsblk_result = await plugin._run_command("lsblk -o NAME,SIZE,TYPE,MOUNTPOINT")
+    lsblk_result = await plugin._run_command("lsblk -o NAME,SIZE,TYPE,MOUNTPOINT", host=host)
     if lsblk_result["returncode"] == 0:
         results["block_devices"] = lsblk_result["stdout"]
 
-    swap_result = await plugin._run_command("free -h; swapon --show 2>/dev/null || echo 'No swap'")
+    swap_result = await plugin._run_command(
+        "free -h; swapon --show 2>/dev/null || echo 'No swap'", host=host
+    )
     if swap_result["returncode"] == 0:
         results["swap"] = swap_result["stdout"]
 
-    vm_result = await plugin._run_command("vmstat -s")
+    vm_result = await plugin._run_command("vmstat -s", host=host)
     if vm_result["returncode"] == 0:
         results["vm_stats"] = vm_result["stdout"]
 
@@ -218,17 +224,20 @@ async def linux_disk(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
 
 async def linux_memory(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Подробная информация о памяти"""
+    host = params.get("host")
     results: dict[str, Any] = {}
 
-    free_result = await plugin._run_command("free -h")
+    free_result = await plugin._run_command("free -h", host=host)
     if free_result["returncode"] == 0:
         results["memory"] = free_result["stdout"]
 
-    vm_stat_result = await plugin._run_command("vmstat -s")
+    vm_stat_result = await plugin._run_command("vmstat -s", host=host)
     if vm_stat_result["returncode"] == 0:
         results["vm_stats"] = vm_stat_result["stdout"]
 
-    swap_result = await plugin._run_command("swapon --show 2>/dev/null || echo 'No swap'")
+    swap_result = await plugin._run_command(
+        "swapon --show 2>/dev/null || echo 'No swap'", host=host
+    )
     if swap_result["returncode"] == 0:
         results["swap"] = swap_result["stdout"]
 
@@ -237,6 +246,7 @@ async def linux_memory(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResul
 
 async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Получение статистики хоста: CPU, память, диск, загрузка"""
+    host = params.get("host")
     import platform
     import sys
 
@@ -255,7 +265,7 @@ async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolR
     results: dict[str, str] = {}
     for key, command in commands.items():
         try:
-            result = await plugin._run_command(command)
+            result = await plugin._run_command(command, host=host)
             if result["returncode"] == 0 and result["stdout"].strip():
                 results[key] = result["stdout"].strip()
             else:
@@ -279,6 +289,7 @@ async def linux_host_stats(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolR
 
 async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Список запущенных процессов с фильтрацией"""
+    host = params.get("host")
     limit = min(int(params.get("limit", 50)), 100)
     filter_str = params.get("filter", "")
 
@@ -289,7 +300,7 @@ async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRe
         # macOS ps без --sort; head берёт с запасом под header
         command = f"ps aux | head -{limit + 1}"
 
-    result = await plugin._run_command(command)
+    result = await plugin._run_command(command, host=host)
 
     if result["returncode"] != 0:
         return ToolResult.error(f"Failed to get processes: {result['stderr']}")
@@ -330,12 +341,13 @@ async def linux_processes(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolRe
 
 async def linux_execute_command(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
     """Выполнение произвольной read-only команды"""
+    host = params.get("host")
     command = params.get("command", "")
     timeout = int(params.get("timeout", 30))
 
     if not command:
         return ToolResult.error("Command is required")
 
-    result = await plugin._run_command(command, timeout)
+    result = await plugin._run_command(command, timeout, host=host)
 
     return ToolResult.ok(result)

@@ -4,6 +4,8 @@
 
 ## Netdiag (6 tools)
 
+Здесь `host` — **цель пробы** (IP/hostname), а НЕ имя из секции `hosts:`. Multi-host registry в netdiag не поддерживается.
+
 | Tool | Description |
 |------|-------------|
 | `http_check` | HTTP(S) check: status, timings, redirects |

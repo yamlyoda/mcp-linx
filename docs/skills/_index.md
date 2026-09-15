@@ -17,3 +17,4 @@
 | Нужна цепочка «что за чем вызывать» | `workflows.md` |
 | Нужна таблица «что с чем коррелирует» | `correlations.md` |
 | Пишу свой плагин / настраиваю config / подключаю MCP-клиент | `core.md` (идеология) + `custom.md` (как делать) |
+| Диагностика **удалённого** хоста по SSH (multi-host, `host=<name>`) | `../REMOTE_TROUBLESHOOTING.md`; инструменты linux/nginx/systemd |

@@ -4,6 +4,8 @@
 
 ## Nginx Diagnostics (5 tools)
 
+`nginx_config`, `nginx_upstream`, `nginx_status`, `nginx_logs` принимают `host=<имя из hosts:>` (удалённо по SSH). `nginx_stub_status` работает только с локально сконфигурированным `stub_status_url` и `host` не принимает.
+
 | Tool | Description |
 |------|-------------|
 | `nginx_status` | Service status |

@@ -62,15 +62,16 @@ def _parse_bpftool_map_dump(text: str) -> list[str]:
 
 async def service_status(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemctl status/is-active/is-enabled для юнита"""
+    host = params.get("host")
     unit = str(params.get("unit", "")).strip()
     err = _check_unit(unit)
     if err:
         return ToolResult.error(err)
     try:
         q = shlex.quote(unit)
-        active = await plugin._run(f"systemctl is-active {q}", timeout=10)
-        enabled = await plugin._run(f"systemctl is-enabled {q}", timeout=10)
-        status = await plugin._run(f"systemctl status {q} --no-pager -l", timeout=15)
+        active = await plugin._run(f"systemctl is-active {q}", timeout=10, host=host)
+        enabled = await plugin._run(f"systemctl is-enabled {q}", timeout=10, host=host)
+        status = await plugin._run(f"systemctl status {q} --no-pager -l", timeout=15, host=host)
         state = active["stdout"].strip() or "unknown"
         data = {
             "unit": unit,
@@ -89,8 +90,11 @@ async def service_status(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolR
 
 async def failed_units(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemctl --failed — список упавших юнитов"""
+    host = params.get("host")
     try:
-        result = await plugin._run("systemctl --failed --no-pager --no-legend", timeout=15)
+        result = await plugin._run(
+            "systemctl --failed --no-pager --no-legend", timeout=15, host=host
+        )
         if result["returncode"] != 0:
             return ToolResult.error(result["stderr"][:500] or "systemctl --failed failed")
         units = [ln.strip() for ln in result["stdout"].splitlines() if ln.strip()]
@@ -106,6 +110,7 @@ async def failed_units(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolRes
 
 async def service_logs(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """journalctl -u <unit> — логи сервиса"""
+    host = params.get("host")
     unit = str(params.get("unit", "")).strip()
     err = _check_unit(unit)
     if err:
@@ -117,7 +122,7 @@ async def service_logs(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolRes
         cmd = f"journalctl -u {q} -n {lines} --no-pager"
         if priority:
             cmd += f" -p {shlex.quote(priority)}"
-        result = await plugin._run(cmd, timeout=20)
+        result = await plugin._run(cmd, timeout=20, host=host)
         if result["returncode"] != 0:
             return ToolResult.error(result["stderr"][:500] or "journalctl failed")
         text = result["stdout"]
@@ -131,10 +136,11 @@ async def service_logs(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolRes
 
 async def boot_analysis(plugin: SystemdPlugin, params: dict[str, Any]) -> ToolResult:
     """systemd-analyze blame — кто тормозит загрузку"""
+    host = params.get("host")
     try:
         top = max(5, min(int(params.get("top", 15)), 50))
-        blame = await plugin._run("systemd-analyze blame --no-pager", timeout=20)
-        total = await plugin._run("systemd-analyze", timeout=15)
+        blame = await plugin._run("systemd-analyze blame --no-pager", timeout=20, host=host)
+        total = await plugin._run("systemd-analyze", timeout=15, host=host)
         if blame["returncode"] != 0:
             return ToolResult.error(blame["stderr"][:500] or "systemd-analyze failed")
         lines = [ln.strip() for ln in blame["stdout"].splitlines() if ln.strip()][:top]
@@ -155,6 +161,7 @@ async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> To
     (см. INCIDENT_504): eBPF map — ground truth, unit-файлы — нет.
     Read-only: только systemctl show / bpftool show / dump.
     """
+    host = params.get("host")
     unit = str(params.get("unit", "")).strip()
     err = _check_unit(unit)
     if err:
@@ -168,6 +175,7 @@ async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> To
             f"systemctl show {q} -p IPAddressAllow -p IPAddressDeny "
             f"-p IPAccounting -p IPAddressAllowExtra 2>/dev/null",
             timeout=10,
+            host=host,
         )
         declared: dict[str, str] = {}
         for ln in show["stdout"].splitlines():
@@ -181,11 +189,12 @@ async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> To
             f"bpftool cgroup show /sys/fs/cgroup/system.slice/{q} 2>&1 || "
             f"bpftool cgroup show /sys/fs/cgroup/{q} 2>&1 || echo 'NO_CGROUP_BPF'",
             timeout=10,
+            host=host,
         )
         data["cgroup_bpf_raw"] = cgroup["stdout"][:2000]
 
         # 3. Все cgroup_skb программы + их maps
-        progs = await plugin._run("bpftool prog show 2>&1 | head -60", timeout=10)
+        progs = await plugin._run("bpftool prog show 2>&1 | head -60", timeout=10, host=host)
         prog_text = progs["stdout"]
         data["progs_raw"] = prog_text[:3000]
         unit_progs = [
@@ -196,7 +205,7 @@ async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> To
         data["unit_progs"] = unit_progs
 
         # 4. LPM-whitelist maps для юнита: bpftool map list → dump
-        maps = await plugin._run("bpftool map list 2>&1 | head -60", timeout=10)
+        maps = await plugin._run("bpftool map list 2>&1 | head -60", timeout=10, host=host)
         map_text = maps["stdout"]
         data["maps_raw"] = map_text[:2000]
         short = unit.replace(".service", "")
@@ -206,7 +215,7 @@ async def service_ip_filter(plugin: SystemdPlugin, params: dict[str, Any]) -> To
         for m in re.finditer(r"name\s+(\S*" + re.escape(short) + r"\S*|\S*sd_fw\S*)", map_text):
             map_name = m.group(1)
             dump = await plugin._run(
-                f"bpftool map dump name {shlex.quote(map_name)} 2>&1", timeout=10
+                f"bpftool map dump name {shlex.quote(map_name)} 2>&1", timeout=10, host=host
             )
             cidrs = _parse_bpftool_map_dump(dump["stdout"])
             dumped.append({"map": map_name, "cidrs": cidrs, "raw": dump["stdout"][:2000]})

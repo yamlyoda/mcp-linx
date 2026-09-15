@@ -71,7 +71,7 @@ class TestLinuxTools:
         captured = {}
         plugin = MagicMock(spec=LinuxPlugin)
 
-        async def fake_run(command, timeout=30):
+        async def fake_run(command, timeout=30, host=None):
             captured["command"] = command
             return {"stdout": "line1\n", "stderr": "", "returncode": 0}
 
@@ -134,7 +134,7 @@ class TestNginxLogs:
         plugin = MagicMock(spec=NginxPlugin)
         plugin._config = {"log_path": "/var/log/nginx", "error_log": "error.log"}
 
-        async def fake_run(command, timeout=30):
+        async def fake_run(command, timeout=30, host=None):
             captured["command"] = command
             return {"stdout": "error log line\n", "stderr": "", "returncode": 0}
 

@@ -4,6 +4,8 @@
 
 ## Linux Diagnostics (8 tools)
 
+Все 8 инструментов принимают `host=<имя из hosts:>` — команда выполняется на удалённом хосте по SSH (без `host` — локально).
+
 | Tool | Description |
 |------|-------------|
 | `linux_host_stats` | Host statistics (CPU, memory, load) |

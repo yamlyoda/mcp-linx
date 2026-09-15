@@ -86,12 +86,14 @@ class SystemdPlugin(DiagnosticPlugin):
         if self._adapter:
             await self._adapter.disconnect()
 
-    async def _run(self, command: str, timeout: int = 15) -> dict[str, Any]:
+    async def _run(
+        self, command: str, timeout: int = 15, host: str | None = None
+    ) -> dict[str, Any]:
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
         self._security.validate_command(command)
         try:
-            result = await self._adapter.execute_command(command, timeout)
+            result = await self._resolve_adapter(host).execute_command(command, timeout)
             result["stdout"] = self._security.limit_log_lines(result["stdout"])
             return result
         except Exception as e:

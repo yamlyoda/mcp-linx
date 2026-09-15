@@ -88,6 +88,13 @@ class DiagnosticPlugin(ABC):
 - `LocalAdapter` — Local subprocess execution
 - `SSHAdapter` — Remote SSH (paramiko)
 - `DockerAdapter` — Docker API
+- `RemoteHostAdapter` — SSH execution to a named remote host (same command interface as the local adapter)
+- `SSHConnectionPool` — persistent, reusable paramiko clients keyed by host
+
+### Multi-Host
+- `HostRegistry` (`src/mcp_linx/multihost.py`) reads the `hosts:` section of `config/settings.yaml`
+- `agent_loop` injects the registry into every plugin (`plugin.hosts`) at startup and closes all connections on shutdown (`HostRegistry.close_all()`)
+- Tools of `linux`, `nginx` (except `nginx_stub_status`) and `systemd` accept a `host` argument (a registry name) and route the command through `_resolve_adapter(host)`; omitting `host` uses the plugin's primary adapter
 
 ### Sandboxes
 - `LocalSandbox` — Local execution
@@ -110,6 +117,17 @@ security:
   max_command_output_size: 10000
   max_log_lines: 500
   command_timeout_seconds: 30
+
+# Multi-host: named remote targets for SSH-based diagnostics.
+hosts: {}
+# hosts:
+#   web-1:
+#     host: 10.130.0.23
+#     port: 22
+#     username: user
+#     key_file: ~/.ssh/id_rsa
+#     host_key_policy: reject   # reject | warning | auto_add
+#     known_hosts: null
 
 plugins:
   enabled: [linux, nginx, docker, postgres]

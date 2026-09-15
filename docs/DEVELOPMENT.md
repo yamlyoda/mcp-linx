@@ -25,7 +25,10 @@ mcp-linx/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── DEVELOPMENT.md
-│   └── SKILLS.md
+│   ├── SKILLS.md
+│   ├── REMOTE_TROUBLESHOOTING.md
+│   ├── INCIDENT_504.md
+│   └── skills/            # topic-split skills (per incident)
 ├── src/mcp_linx/
 │   ├── main.py
 │   ├── harness/           # Harness module
@@ -33,13 +36,17 @@ mcp-linx/
 │   │   ├── plugin_manager.py
 │   │   ├── sandbox.py
 │   │   └── context.py
-│   ├── plugins/           # Diagnostic plugins
+│   ├── plugins/           # Diagnostic plugins (base.py defines `host` resolution)
 │   │   ├── base.py
-│   │   ├── linux/
-│   │   ├── nginx/
-│   │   ├── docker/
-│   │   └── postgres/
+│   │   ├── linux/ nginx/ docker/
+│   │   ├── postgres/ redis/ systemd/
+│   │   └── netdiag/ kubernetes/ prometheus/ loki/
 │   ├── adapters/
+│   │   ├── base.py
+│   │   ├── ssh.py
+│   │   ├── ssh_pool.py    # SSHConnectionPool + RemoteHostAdapter (multi-host)
+│   │   └── docker.py
+│   ├── multihost.py       # HostRegistry (`hosts:` config)
 │   ├── security.py
 │   └── types.py
 ├── tests/

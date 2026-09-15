@@ -17,6 +17,7 @@ from fastmcp import FastMCP
 from mcp_linx.audit import AuditLogger
 from mcp_linx.context_aggregator import ContextAggregator
 from mcp_linx.harness.plugin_manager import PluginManager
+from mcp_linx.multihost import HostRegistry
 from mcp_linx.plugins.base import DiagnosticPlugin
 from mcp_linx.ratelimit import RateLimiter
 
@@ -65,6 +66,7 @@ class DefaultAgentLoop(AgentLoop):
         self._audit_logger: AuditLogger | None = None
         self._rate_limiter: RateLimiter | None = None
         self._config: dict[str, Any] | None = None
+        self._host_registry: HostRegistry | None = None
 
     async def setup(
         self, mcp: FastMCP, plugin_manager: PluginManager, config: dict[str, Any]
@@ -82,6 +84,13 @@ class DefaultAgentLoop(AgentLoop):
 
         # Инициализация плагинов
         await plugin_manager.initialize_all()
+
+        # Multi-host: реестр удалённых хостов из config["hosts"] + инжект в плагины
+        self._host_registry = HostRegistry(config)
+        if self._host_registry.list_hosts():
+            logger.info(f"Multi-host: {len(self._host_registry.list_hosts())} hosts configured")
+        for plugin in plugin_manager.get_all_plugins():
+            plugin.hosts = self._host_registry
 
         # Регистрация инструментов
         self._register_tools(mcp, plugin_manager)
@@ -105,6 +114,8 @@ class DefaultAgentLoop(AgentLoop):
         """Завершение работы."""
         logger.info("Shutting down...")
         await plugin_manager.destroy_all()
+        if self._host_registry is not None:
+            self._host_registry.close_all()
 
     def _register_tools(self, mcp: FastMCP, plugin_manager: PluginManager) -> None:
         """Регистрация инструментов плагинов."""
@@ -324,3 +335,5 @@ class StreamingAgentLoop(DefaultAgentLoop):
         """Завершение работы."""
         logger.info("Shutting down...")
         await plugin_manager.destroy_all()
+        if self._host_registry is not None:
+            self._host_registry.close_all()

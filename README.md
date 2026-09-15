@@ -107,6 +107,20 @@ security:
   max_log_lines: 500
   command_timeout_seconds: 30
 
+# Multi-host: named remote targets for SSH-based diagnostics.
+# Мультихост: именованные удалённые хосты для диагностики по SSH.
+# Tools accepting registry `host`: linux_*, nginx_* (кроме nginx_stub_status), systemd_*.
+hosts: {}
+# hosts:
+#   web-1:
+#     host: 10.130.0.23
+#     port: 22
+#     username: user
+#     key_file: ~/.ssh/id_rsa
+#     password: null                 # prefer env / key auth, не хранить в файле
+#     host_key_policy: reject        # reject | warning | auto_add
+#     known_hosts: null
+
 plugins:
   enabled:
     - linux
@@ -320,34 +334,36 @@ plugins:
 **English:**
 
 ```
-mcp_linx/
+mcp-linx/
 ├── src/mcp_linx/
 │   ├── main.py               # MCP server entry point (FastMCP + AgentLoop)
 │   ├── harness/              # Harness core: agent_loop, plugin_manager (auto-discovery),
 │   │                         #   sandbox, context (compaction)
-│   ├── plugin_manager.py     # Plugin registration and lifecycle
+│   ├── multihost.py          # HostRegistry — named remote hosts (`hosts:` config)
 │   ├── context_aggregator.py # Cross-component correlations
 │   ├── security.py           # SecurityGuard (command validation, readonly mode)
 │   ├── types.py              # Status, ToolResult, ComponentState, Correlation
 │   ├── adapters/
 │   │   ├── base.py           # Base adapter (abstract) + LocalAdapter
 │   │   ├── ssh.py            # SSH adapter (paramiko)
+│   │   ├── ssh_pool.py       # SSHConnectionPool + RemoteHostAdapter (multi-host)
 │   │   └── docker.py         # Docker API adapter
-│   └── plugins/              # Auto-discovered plugins (10 total, 51 tools)
-│       ├── base.py           # DiagnosticPlugin base class
-│       ├── linux/            # 7 tools
-│       ├── nginx/            # 4 tools
+│   └── plugins/              # Auto-discovered plugins (10 total, 56 tools)
+│       ├── base.py           # DiagnosticPlugin base class (+ `host` resolution)
+│       ├── linux/            # 8 tools
+│       ├── nginx/            # 5 tools
 │       ├── docker/           # 7 tools
 │       ├── postgres/         # 7 tools
 │       ├── redis/            # 5 tools
-│       ├── systemd/          # 4 tools
-│       ├── netdiag/          # 4 tools
+│       ├── systemd/          # 5 tools
+│       ├── netdiag/          # 6 tools
 │       ├── kubernetes/       # 6 tools
 │       ├── prometheus/       # 4 tools
 │       └── loki/             # 3 tools
 ├── config/settings.yaml      # Server configuration
-├── tests/                    # Unit tests (41 tests, all passing)
-└── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md
+├── tests/                    # Unit + integration tests (111 passing, 2 skipped)
+└── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md,
+                              #   REMOTE_TROUBLESHOOTING.md, INCIDENT_504.md, skills/
 ```
 
 Key features:
@@ -355,42 +371,49 @@ Key features:
 - **Security**: readonly mode blocks write commands (rm, mkfs, dd, fork bombs, etc.)
 - **Context Aggregator**: detects cross-component correlations
 - **Adapters**: Local subprocess, SSH (paramiko), Docker API
+- **Multi-host**: named remote targets in `hosts:`; `linux_*`, `nginx_*` (except `nginx_stub_status`) and `systemd_*` accept a `host` argument — see `REMOTE_TROUBLESHOOTING.md`
 
 **Русский:**
 
 ```
-mcp_linx/
+mcp-linx/
 ├── src/mcp_linx/
 │   ├── main.py               # Точка входа MCP сервера (FastMCP + AgentLoop)
 │   ├── harness/              # Ядро Harness: agent_loop, plugin_manager (автообнаружение),
 │   │                         #   sandbox, context (компакция)
-│   ├── plugin_manager.py     # Регистрация и жизненный цикл плагинов
+│   ├── multihost.py          # HostRegistry — именованные удалённые хосты (`hosts:`)
 │   ├── context_aggregator.py # Корреляции между компонентами
 │   ├── security.py           # SecurityGuard (валидация команд, readonly режим)
 │   ├── types.py              # Общие типы: Status, ToolResult, ComponentState, Correlation
 │   ├── adapters/
 │   │   ├── base.py           # Базовый адаптер (abstract) + LocalAdapter
 │   │   ├── ssh.py            # SSH адаптер (paramiko)
+│   │   ├── ssh_pool.py       # SSHConnectionPool + RemoteHostAdapter (мультихост)
 │   │   └── docker.py         # Docker API адаптер
-│   └── plugins/              # Автообнаружаемые плагины (10 всего, 51 инструмент)
-│       ├── base.py           # Базовый DiagnosticPlugin
-│       ├── linux/            # 7 инструментов
-│       ├── nginx/            # 4 инструмента
+│   └── plugins/              # Автообнаружаемые плагины (10 всего, 56 инструментов)
+│       ├── base.py           # Базовый DiagnosticPlugin (+ резолв `host`)
+│       ├── linux/            # 8 инструментов
+│       ├── nginx/            # 5 инструментов
 │       ├── docker/           # 7 инструментов
 │       ├── postgres/         # 7 инструментов
 │       ├── redis/            # 5 инструментов
-│       ├── systemd/          # 4 инструмента
-│       ├── netdiag/          # 4 инструмента
+│       ├── systemd/          # 5 инструментов
+│       ├── netdiag/          # 6 инструментов
 │       ├── kubernetes/       # 6 инструментов
 │       ├── prometheus/       # 4 инструмента
 │       └── loki/             # 3 инструмента
 ├── config/settings.yaml      # Конфигурация сервера
-├── tests/                    # Unit тесты (41 тест, все проходят)
-└── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md
+├── tests/                    # Unit + интеграционные тесты (111 проходят, 2 пропущено)
+└── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md,
+                              #   REMOTE_TROUBLESHOOTING.md, INCIDENT_504.md, skills/
 ```
 
 Основные возможности:
 - **Идеология Harness**: всё — плагин (инструменты, agent loops, песочницы, компакторы контекста); плагины обнаруживаются автоматически из директории `plugins/`
+- **Безопасность**: readonly-режим блокирует write-команды (rm, mkfs, dd, fork-бомбы и т.п.)
+- **Context Aggregator**: находит корреляции между компонентами
+- **Адаптеры**: Local subprocess, SSH (paramiko), Docker API
+- **Мультихост**: именованные удалённые хосты в `hosts:`; `linux_*`, `nginx_*` (кроме `nginx_stub_status`) и `systemd_*` принимают аргумент `host` — см. `REMOTE_TROUBLESHOOTING.md`
 
 ---
 

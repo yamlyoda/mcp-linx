@@ -5,6 +5,25 @@ environment:
   mode: development  # development | production
   debug: true
 
+# Multi-host: удалённые хосты для диагностики по SSH.
+# Инструменты linux_*/nginx_* (кроме nginx_stub_status)/systemd_* принимают
+# параметр host: <имя из списка>.
+# Поле password — не хранить в файле; переопределяйте через env.
+hosts: {}
+# hosts:
+#   web-1:
+#     host: 10.130.0.23
+#     port: 22
+#     username: user
+#     key_file: ~/.ssh/id_rsa
+#     password: null
+#     host_key_policy: reject   # reject | warning | auto_add
+#     known_hosts: null
+#   db-1:
+#     host: 10.130.0.24
+#     username: user
+#     key_file: ~/.ssh/id_rsa
+
 security:
   readonly: true
   max_command_output_size: 10000  # байт

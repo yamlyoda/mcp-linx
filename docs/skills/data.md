@@ -2,6 +2,8 @@
 
 Часть Skills (см. `docs/SKILLS.md`). Связки: `workflows.md`, корреляции — `correlations.md`.
 
+PostgreSQL и Redis подключаются по своему адресу из конфига плагина — параметр multi-host `host=<имя из hosts:>` здесь не поддерживается.
+
 ## PostgreSQL Diagnostics (7 tools)
 
 | Tool | Description |
