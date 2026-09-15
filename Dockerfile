@@ -70,9 +70,14 @@ RUN groupadd -r mcp \
 WORKDIR /app
 
 # Wheel из builder
+# Wheel из builder
 COPY --from=builder /wheels/*.whl /tmp/
+# Build-only tooling, вытекшее из python:3.11-slim (wheel 0.45.1 → CVE-2026-24049,
+# setuptools→jaraco.context 5.3.0 → CVE-2026-23949), не нужно рантайму: ни src/,
+# ни tests/ не используют pkg_resources/importlib.metadata → удаляем из образа.
 RUN pip install --no-cache-dir /tmp/*.whl \
-    && rm -f /tmp/*.whl
+    && rm -f /tmp/*.whl \
+    && pip uninstall -y setuptools wheel || true
 
 # Конфиг по умолчанию (переопределяйте маунтом: -v ./config:/app/config:ro)
 COPY config/ /app/config/
