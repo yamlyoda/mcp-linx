@@ -72,12 +72,13 @@ WORKDIR /app
 # Wheel из builder
 # Wheel из builder
 COPY --from=builder /wheels/*.whl /tmp/
-# Build-only tooling, вытекшее из python:3.11-slim (wheel 0.45.1 → CVE-2026-24049,
-# setuptools→jaraco.context 5.3.0 → CVE-2026-23949), не нужно рантайму: ни src/,
-# ни tests/ не используют pkg_resources/importlib.metadata → удаляем из образа.
+# python:3.11-slim + транзитивные deps (в т.ч. `kubernetes` → setuptools) приносят
+# build-only tooling с CVE: wheel 0.45.1 → CVE-2026-24049, setuptools→jaraco.context
+# 5.3.0 → CVE-2026-23949. Отключать нельзя (transitive deps), поэтому прокачиваем до
+# патч-версий: setuptools>=83 (PYSEC-2026-3447, как pyproject:48) и wheel>=0.46.2.
 RUN pip install --no-cache-dir /tmp/*.whl \
     && rm -f /tmp/*.whl \
-    && pip uninstall -y setuptools wheel || true
+    && pip install --no-cache-dir --upgrade 'setuptools>=83' 'wheel>=0.46.2'
 
 # Конфиг по умолчанию (переопределяйте маунтом: -v ./config:/app/config:ro)
 COPY config/ /app/config/
