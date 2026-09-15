@@ -84,7 +84,9 @@ jobs:
           echo "$resp" | head -1
           echo "$resp" | grep -q '"serverInfo"' && echo "MCP stdio OK"
       - name: Trivy — скан образа (CVE + секреты)
-        uses: aquasecurity/trivy-action@0.24.0
+        # ВАЖНО: у aquasecurity/trivy-action все теги идут с префиксом "v".
+        # Ref без префикса (0.24.0) не существует → "unable to resolve action".
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: mcp-linx:ci
           format: table

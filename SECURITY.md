@@ -208,7 +208,7 @@ CI job `security` (`.github/workflows/ci.yml`) запускается парал
 | **Bandit** (SAST) | Уязвимости в коде: инъекции, hardcoded секреты, небезопасные вызовы | `bandit -c pyproject.toml -r src/mcp_linx` |
 | **pip-audit** (SCA) | Известные CVE во всех зависимостях (PyPI Advisory DB / OSV) | `pip-audit --skip-editable` |
 | **Gitleaks** | Секреты/токены/пароли в коде и git-истории | `gitleaks/gitleaks-action@v2` |
-| **Trivy** (job `docker-build`) | CVE + секреты в Docker-образе (HIGH/CRITICAL → fail) | `aquasecurity/trivy-action@0.24.0` |
+| **Trivy** (job `docker-build`) | CVE + секреты в Docker-образе (HIGH/CRITICAL → fail) | `aquasecurity/trivy-action@v0.36.0` (последний; релиз immutable) |
 
 Все хуки продублированы локально в `.pre-commit-config.yaml` (ruff, bandit, gitleaks, mypy).
 
