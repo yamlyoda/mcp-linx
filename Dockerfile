@@ -50,6 +50,10 @@ ENV PIP_NO_CACHE_DIR=1 \
 #   postgresql-client / redis-tools — pg_* / redis_* плагины по сети
 #   iproute2 (ss), dnsutils (dig), procps (ps), curl — netdiag и linux-проверки
 # kubectl/jq не включены ради размера образа; при необходимости добавьте.
+#
+# `python:3.11-slim` уже включает deb822-источник (debian.sources) со
+# suites: trixie trixie-updates trixie-security. Просто делаем apt upgrade,
+# чтобы получить патчи для CVE в базовых пакетах (gzip/libpcre2/libsqlite3).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openssh-client \
@@ -60,6 +64,7 @@ RUN apt-get update \
         iproute2 \
         dnsutils \
         procps \
+    && apt-get install -y --only-upgrade --no-install-recommends gzip libpcre2-8-0 libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Непривилегированный пользователь
@@ -75,10 +80,10 @@ COPY --from=builder /wheels/*.whl /tmp/
 # python:3.11-slim + транзитивные deps (в т.ч. `kubernetes` → setuptools) приносят
 # build-only tooling с CVE: wheel 0.45.1 → CVE-2026-24049, setuptools→jaraco.context
 # 5.3.0 → CVE-2026-23949. Отключать нельзя (transitive deps), поэтому прокачиваем до
-# патч-версий: setuptools>=83 (PYSEC-2026-3447, как pyproject:48) и wheel>=0.46.2.
+# патч-версий: setuptools==84.0.0 (max на PyPI; тянет jaraco.context>=6.1) и wheel>=0.46.2.
 RUN pip install --no-cache-dir /tmp/*.whl \
     && rm -f /tmp/*.whl \
-    && pip install --no-cache-dir --upgrade 'setuptools>=83' 'wheel>=0.46.2'
+    && pip install --no-cache-dir --upgrade 'setuptools==84.0.0' 'wheel>=0.46.2'
 
 # Конфиг по умолчанию (переопределяйте маунтом: -v ./config:/app/config:ro)
 COPY config/ /app/config/

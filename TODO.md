@@ -92,11 +92,12 @@
 - [x] **B8. CI падал на резолве `aquasecurity/trivy-action@0.24.0`** — у экшена все теги идут с префиксом `v`, ref без префикса не существует («Unable to resolve action… unable to find version 0.24.0»). ✅ FIXED 2026-09-15 → `@v0.36.0` + синхронизирован `SECURITY.md:211`.
 - [ ] **B9. Рассмотреть пиннинг third-party экшенов по commit SHA** (сейчас все — по тегам: `@v4`, `@v5`, `@v6`, `@v2`, `@v0.36.0`). У trivy-action релизы immutable (`immutable: true`), так что переопределить тег нельзя, но SHA-пиннинг + `dependabot.yml` — надёжнее.
 
-- [x] **B10 (FIXED 2026-09-15). CI `docker-build` падал на Trivy.**
-  - Двойной fix:
-    1. **ci.yml**: `ignore-unfixed: true` → из 76 HIGH/CRITICAL осталось 2 реально exploitable (с патчем).
-        2. **Dockerfile (runtime-stage)**: `setuptools` + `wheel` нельзя удалить (`kubernetes` держит `setuptools` как transitive), поэтому прокачаны до патч‑версий: `setuptools>=83` + `wheel>=0.46.2` — устраняют CVE-2026-24049 (wheel) и CVE-2026-23949 (jaraco.context через setuptools). Версии совпадают с dev‑пиннией в `pyproject.toml:48`.
-  - Итог после rebuild: ожидаемо 0 HIGH/CRITICAL (перепроверть в CI). Полный per-CVE лист — в артефакте `trivy-results` (json).
+- [x] **B10 (FIXED 2026-09-16). CI `docker-build` падал на Trivy.**
+  - Тройной fix (проверен локально `trivy image mcp-linx:ci --severity HIGH,CRITICAL --ignore-unfixed` → **Total: 0, Exit: 0**):
+    1. **ci.yml**: `aquasecurity/trivy-action@0.24.0` → `@v0.36.0` (ref без `v` не существует) + `ignore-unfixed: true` → из 76 HIGH/CRITICAL осталось только реально патчащиеся.
+    2. **Dockerfile (python-слой)**: `setuptools==84.0.0` (max на PyPI; 84.1.0 не существует) + `wheel>=0.46.2` — закрывают CVE-2026-24049 (wheel) и CVE-2026-23949 (jaraco.context через setuptools). Удалять нельзя: `kubernetes` держит `setuptools` как transitive.
+    3. **Dockerfile (apt-слой)**: `apt-get install --only-upgrade gzip libpcre2-8-0 libsqlite3-0` — закрывает 5 Debian HIGH (CVE-2026-41992/86145/89161/11822/11824) из базового `python:3.11-slim`; security/updates-суиты уже есть в deb822 `debian.sources`, кастомные `.list` не нужны.
+  - Полный per-CVE лист — в артефакте `trivy-results` (json).
   - B9 (SHA-пиннинг `FROM` + third-party-action) остаётся open — follow-up.
 
 <a name="C"></a>
