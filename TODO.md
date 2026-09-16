@@ -1,5 +1,8 @@
 # TODO — Architecture Review & Findings
 
+> Карта репо и протокол работы: [`AGENTS.md`](./AGENTS.md) (читать первым).
+> Навигация по докам: [`docs/INDEX.md`](./docs/INDEX.md).
+
 ## Содержание
 
 ### Текущие находки и бэклог (Audit 2026-09-15)

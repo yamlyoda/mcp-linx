@@ -1,14 +1,13 @@
 # MCP-Linx — MCP Server for Linux Infrastructure Diagnostics
 
-**English:** MCP-Linx is an MCP (Model Context Protocol) server for Linux infrastructure diagnostics. It provides tools for monitoring and diagnosing components: Linux host, Nginx, Docker, PostgreSQL, Redis, Systemd, Netdiag, Kubernetes, Prometheus, Loki.
+> Русская версия: [`README.ru.md`](./README.ru.md).
 
-**Русский:** MCP-Linx — это MCP (Model Context Protocol) сервер для диагностики Linux-инфраструктуры. Он предоставляет инструменты для мониторинга и диагностики компонентов: Linux host, Nginx, Docker, PostgreSQL, Redis, Systemd, Netdiag, Kubernetes, Prometheus, Loki.
+MCP-Linx is an MCP (Model Context Protocol) server for Linux infrastructure diagnostics. It provides tools for monitoring and diagnosing components: Linux host, Nginx, Docker, PostgreSQL, Redis, Systemd, Netdiag, Kubernetes, Prometheus, Loki.
 
 ---
 
-## Installation / Установка
+## Installation
 
-**English:**
 ```bash
 # Create a virtual environment
 python3.11 -m venv .venv
@@ -18,21 +17,10 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-**Русский:**
-```bash
-# Создание виртуального окружения
-python3.11 -m venv .venv
-source .venv/bin/activate
-
-# Установка зависимостей
-pip install -e ".[dev]"
-```
-
 ---
 
-## Running the Server / Запуск сервера
+## Running the Server
 
-**English:**
 ```bash
 # Start MCP server (stdio mode)
 python -m mcp_linx.main
@@ -41,18 +29,7 @@ python -m mcp_linx.main
 npx @modelcontextprotocol/inspector python -m mcp_linx.main
 ```
 
-**Русский:**
-```bash
-# Запуск MCP сервера (stdio режим)
-python -m mcp_linx.main
-
-# С запуском MCP Inspector для отладки
-npx @modelcontextprotocol/inspector python -m mcp_linx.main
-```
-
 ### Docker
-
-**English:**
 
 Two deployment models with the same image:
 
@@ -77,39 +54,20 @@ docker compose run --rm mcp-linx
 }
 ```
 
-**Русский:**
-
-Один образ — две модели запуска:
-
-- **Модель A (по умолчанию, безопасная)** — изолированный контейнер диагностирует *удалённые* хосты по SSH; postgres/redis/prometheus/loki/k8s — по сети.
-- **Модель B (host)** — диагностика *самого* хоста (только Linux): нужны `pid: host`, `network_mode: host` и read-only маунты (см. `docker-compose.yml`). Внимание: маунт `docker.sock` даёт root-доступ к хосту Docker.
-
-```bash
-# Сборка
-docker build -t mcp-linx:latest .
-
-# Запуск через compose (stdio; MCP-клиенты: command=docker, args=["run","-i","--rm","mcp-linx:latest"])
-docker compose run --rm mcp-linx
-```
-
 ---
 
-## Configuration / Конфигурация
+## Configuration
 
-**English:** Main configuration file: `config/settings.yaml`
-
-**Русский:** Основной конфигурационный файл: `config/settings.yaml`
+Main configuration file: `config/settings.yaml`
 
 ```yaml
 security:
-  readonly: true                    # Only read-only operations / Только read-only операции
+  readonly: true                    # Only read-only operations
   max_command_output_size: 10000
   max_log_lines: 500
   command_timeout_seconds: 30
 
 # Multi-host: named remote targets for SSH-based diagnostics.
-# Мультихост: именованные удалённые хосты для диагностики по SSH.
-# Tools accepting registry `host`: linux_*, nginx_* (кроме nginx_stub_status), systemd_*.
 hosts: {}
 # hosts:
 #   web-1:
@@ -117,7 +75,7 @@ hosts: {}
 #     port: 22
 #     username: user
 #     key_file: ~/.ssh/id_rsa
-#     password: null                 # prefer env / key auth, не хранить в файле
+#     password: null                 # prefer env
 #     host_key_policy: reject        # reject | warning | auto_add
 #     known_hosts: null
 
@@ -157,9 +115,7 @@ plugins:
 
 ---
 
-## Tools / Инструменты
-
-**English:**
+## Tools
 
 ### Linux Plugin (8 tools)
 - `linux_host_stats` — Host statistics: CPU, memory, disk, load
@@ -250,89 +206,85 @@ plugins:
 
 ---
 
-**Русский:**
-
 ### Linux Plugin
-- `linux_host_stats` — Статистика хоста: CPU, память, диск, загрузка
-- `linux_processes` — Список запущенных процессов
-- `linux_logs` — Чтение системных логов (journalctl, syslog)
-- `linux_network` — Сетевые интерфейсы, порты, соединения
+- `linux_host_stats`
+- `linux_processes`
+- `linux_logs`
+- `linux_network`
 - `linux_firewall` — Firewall snapshot: nftables + policy routing (read-only)
-- `linux_disk` — Использование диска и файловых систем
-- `linux_memory` — Детальная информация об использовании памяти
-- `linux_execute_command` — Выполнение произвольной read-only команды
+- `linux_disk`
+- `linux_memory`
+- `linux_execute_command`
 
 ### Nginx Plugin
-- `nginx_status` — Статус службы Nginx и процессов
-- `nginx_logs` — Чтение error и access логов
-- `nginx_config` — Проверка конфигурации Nginx
-- `nginx_upstream` — Upstream: конфиг + реальный HTTP health check
-- `nginx_stub_status` — Метрики stub_status: connections, requests
+- `nginx_status`
+- `nginx_logs`
+- `nginx_config`
+- `nginx_upstream`
+- `nginx_stub_status`
 
 ### Docker Plugin
-- `docker_containers` — Список контейнеров с фильтрацией
-- `docker_logs` — Логи контейнера
-- `docker_stats` — Статистика контейнера: CPU, память, сеть
-- `docker_info` — Полная информация о контейнере или системе
-- `docker_events` — Docker события
-- `docker_system_df` — Использование диска Docker
-- `docker_prune` — Удаление остановленных контейнеров
+- `docker_containers`
+- `docker_logs`
+- `docker_stats`
+- `docker_info`
+- `docker_events`
+- `docker_system_df`
+- `docker_prune`
 
 ### PostgreSQL Plugin
-- `pg_connections` — Активные подключения
-- `pg_locks` — Блокировки и заблокированные запросы
-- `pg_slow_queries` — Медленные запросы
-- `pg_activity` — Полная активность: текущие запросы, состояния
-- `pg_stats` — Статистика: таблицы, индексы, базы данных
-- `pg_replication` — Статус репликации
-- `pg_tables` — Список таблиц с размерами и статистикой
+- `pg_connections`
+- `pg_locks`
+- `pg_slow_queries`
+- `pg_activity`
+- `pg_stats`
+- `pg_replication`
+- `pg_tables`
 
 ### Redis Plugin
-- `redis_ping` — Доступность Redis (PING)
-- `redis_info` — Секции INFO: memory, clients, stats, replication
-- `redis_clients` — Клиентские подключения (CLIENT LIST)
+- `redis_ping`
+- `redis_info`
+- `redis_clients`
 - `redis_slowlog` — Slow log (SLOWLOG GET)
-- `redis_memory` — Анализ памяти: used, peak, fragmentation, evictions
+- `redis_memory`
 
 ### Systemd Plugin
-- `service_status` — Статус юнита (systemctl status/is-active)
-- `failed_units` — Список failed юнитов
-- `service_logs` — Логи сервиса через journalctl -u
-- `boot_analysis` — Анализ времени загрузки (systemd-analyze blame)
-- `service_ip_filter` — Эффективный IP-фильтр: unit-файлы + eBPF/bpftool
+- `service_status`
+- `failed_units`
+- `service_logs`
+- `boot_analysis`
+- `service_ip_filter`
 
 ### Netdiag Plugin
-- `http_check` — HTTP(S) проверка: статус, тайминги, редиректы
-- `tls_check` — TLS сертификат: срок, chain, issuer
-- `dns_resolve` — DNS резолвинг A/AAAA
-- `tcp_connect` — TCP connect с замером времени
-- `tcp_connect_as` — TCP-проба от имени сервис-юзера, per-uid фильтры (нужен privileged_tools)
-- `tcpdump_probe` — Короткий tcpdump-срез (нужен privileged_tools)
+- `http_check`
+- `tls_check`
+- `dns_resolve`
+- `tcp_connect`
+- `tcp_connect_as`
+- `tcpdump_probe`
 
 ### Kubernetes Plugin
-- `k8s_pods` — Поды с фазами и рестартами
-- `k8s_events` — События кластера/неймспейса
-- `k8s_logs` — Логи пода (kubectl logs)
-- `k8s_describe` — Describe пода (conditions)
-- `k8s_top` — Ресурсы подов (kubectl top)
-- `k8s_deployments` — Статус деплойментов
+- `k8s_pods`
+- `k8s_events`
+- `k8s_logs`
+- `k8s_describe`
+- `k8s_top`
+- `k8s_deployments`
 
 ### Prometheus Plugin
-- `prom_query` — Instant PromQL запрос
-- `prom_range` — Range query за период
-- `prom_alerts` — Активные алерты (firing/pending)
-- `prom_targets` — Статус scrape targets (up/down)
+- `prom_query`
+- `prom_range`
+- `prom_alerts`
+- `prom_targets`
 
 ### Loki Plugin
-- `log_search` — LogQL поиск по логам за период
-- `log_labels` — Список label names/values
-- `log_tail` — Последние строки по селектору
+- `log_search`
+- `log_labels`
+- `log_tail`
 
 ---
 
-## Architecture / Архитектура
-
-**English:**
+## Architecture
 
 ```
 mcp-linx/
@@ -374,53 +326,10 @@ Key features:
 - **Adapters**: Local subprocess, SSH (paramiko), Docker API
 - **Multi-host**: named remote targets in `hosts:`; `linux_*`, `nginx_*` (except `nginx_stub_status`) and `systemd_*` accept a `host` argument — see `REMOTE_TROUBLESHOOTING.md`
 
-**Русский:**
-
-```
-mcp-linx/
-├── src/mcp_linx/
-│   ├── main.py               # Точка входа MCP сервера (FastMCP + AgentLoop)
-│   ├── harness/              # Ядро Harness: agent_loop, plugin_manager (автообнаружение),
-│   │                         #   sandbox, context (компакция)
-│   ├── multihost.py          # HostRegistry — именованные удалённые хосты (`hosts:`)
-│   ├── context_aggregator.py # Корреляции между компонентами
-│   ├── security.py           # SecurityGuard (валидация команд, readonly режим)
-│   ├── types.py              # Общие типы: Status, ToolResult, ComponentState, Correlation
-│   ├── adapters/
-│   │   ├── base.py           # Базовый адаптер (abstract) + LocalAdapter
-│   │   ├── ssh.py            # SSH адаптер (paramiko)
-│   │   ├── ssh_pool.py       # SSHConnectionPool + RemoteHostAdapter (мультихост)
-│   │   └── docker.py         # Docker API адаптер
-│   └── plugins/              # Автообнаружаемые плагины (10 всего, 56 инструментов)
-│       ├── base.py           # Базовый DiagnosticPlugin (+ резолв `host`)
-│       ├── linux/            # 8 инструментов
-│       ├── nginx/            # 5 инструментов
-│       ├── docker/           # 7 инструментов
-│       ├── postgres/         # 7 инструментов
-│       ├── redis/            # 5 инструментов
-│       ├── systemd/          # 5 инструментов
-│       ├── netdiag/          # 6 инструментов
-│       ├── kubernetes/       # 6 инструментов
-│       ├── prometheus/       # 4 инструмента
-│       └── loki/             # 3 инструмента
-├── config/settings.yaml      # Конфигурация сервера
-├── tests/                    # Unit + интеграционные тесты (111 проходят, 2 пропущено)
-└── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md,
-                              #   REMOTE_TROUBLESHOOTING.md, INCIDENT_504.md, skills/
-```
-
-Основные возможности:
-- **Идеология Harness**: всё — плагин (инструменты, agent loops, песочницы, компакторы контекста); плагины обнаруживаются автоматически из директории `plugins/`
-- **Безопасность**: readonly-режим блокирует write-команды (rm, mkfs, dd, fork-бомбы и т.п.)
-- **Context Aggregator**: находит корреляции между компонентами
-- **Адаптеры**: Local subprocess, SSH (paramiko), Docker API
-- **Мультихост**: именованные удалённые хосты в `hosts:`; `linux_*`, `nginx_*` (кроме `nginx_stub_status`) и `systemd_*` принимают аргумент `host` — см. `REMOTE_TROUBLESHOOTING.md`
-
 ---
 
-## Testing / Тестирование
+## Testing
 
-**English:**
 ```bash
 # Run all tests
 pytest tests/ -v
@@ -430,21 +339,9 @@ pytest tests/unit/test_security.py -v
 pytest tests/unit/test_new_plugins.py -v
 ```
 
-**Русский:**
-```bash
-# Запуск всех тестов
-pytest tests/ -v
-
-# Запуск конкретного теста
-pytest tests/unit/test_security.py -v
-pytest tests/unit/test_new_plugins.py -v
-```
-
 ---
 
-## Security / Безопасность
-
-**English:**
+## Security
 
 SecurityGuard provides:
 - **Read-only mode**: Blocks write commands (rm, write, mkfs, dd and others)
@@ -454,21 +351,9 @@ SecurityGuard provides:
 - **Host validation**: Whitelist of allowed_hosts
 - **Input validation**: Pydantic schemas for all tool inputs
 
-**Русский:**
-
-SecurityGuard обеспечивает:
-- **Read-only режим**: Блокировка команд записи (rm, write, mkfs, dd и др.)
-- **Блокировка опасных команд**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs и др.
-- **Ограничение размера вывода**: Обрезка больших результатов
-- **Ограничение логов**: Максимальное количество строк
-- **Валидация хостов**: Whitelist allowed_hosts
-- **Валидация входных данных**: Pydantic схемы для всех входных данных инструментов
-
 ---
 
-## Context Aggregator / Контекстный агрегатор
-
-**English:**
+## Context Aggregator
 
 ContextAggregator analyzes states of all components and detects correlations:
 - **Docker + Nginx**: If Docker containers are down, Nginx may have no upstreams
@@ -479,20 +364,9 @@ ContextAggregator analyzes states of all components and detects correlations:
 - **Linux + Kubernetes**: Pods OOMKilled while host has memory pressure
 - **Netdiag + Nginx**: TLS certificate issue while Nginx is failing
 
-**Русский:**
-
-ContextAggregator анализирует состояния всех компонентов и выявляет корреляции:
-- **Docker + Nginx**: Если Docker контейнеры падают, Nginx может не иметь апстримов
-- **PostgreSQL + Docker**: Если PostgreSQL в контейнере и падает
-- **Linux + компоненты**: Если Linux в критическом состоянии, другие компоненты могут не работать
-- **OOM events**: Если Linux сообщает о OOM, это может объяснять падения контейнеров
-- **Redis + PostgreSQL**: Вытеснение ключей в Redis при медленном PostgreSQL — каскад cache-miss
-- **Linux + Kubernetes**: Поды OOMKilled при нехватке памяти на хосте
-- **Netdiag + Nginx**: Проблема TLS сертификата при падении Nginx
-
 ---
 
-## License / Лицензия
+## License
 
 MIT
 
