@@ -102,13 +102,15 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 ---
 
-### 6. Connection Health Monitoring (MEDIUM)
+### 6. Connection Health Monitoring (MEDIUM) — 🟡 PARTIAL
 **Problem**: Stale connections not detected. Tool calls fail with cryptic errors.
 
 **Needed**:
-- Keep-alive mechanism
-- Automatic reconnection
-- Connection health checks
+- Keep-alive mechanism — ✅ DONE (`ssh_pool.py`: `transport.set_keepalive(30)` + `is_active()` check with reconnect of dead clients)
+- Automatic reconnection — 🟡 PARTIAL (dead client → reconnect; live-but-broken transport → no retry yet, see E1)
+- Connection health checks — ❌ TODO (no metrics/probes; see E1)
+
+**Status**: keepalive + dead-client reconnect implemented; retry for live-but-broken transports and metrics remain open.
 
 ---
 
@@ -134,7 +136,7 @@ Config options per SSH adapter (`config/settings.yaml`):
 | P0 | Connection pooling | Medium | ✅ FIXED |
 | P1 | SSH tunnel for PostgreSQL | Low | TODO |
 | P1 | Host key verification | Low | ✅ FIXED |
-| P1 | Connection health monitoring | Low | TODO |
+| P1 | Connection health monitoring | Low | 🟡 PARTIAL (keepalive + dead-client reconnect done; retry/metrics → E1) |
 | P2 | Jump host support | Medium | TODO |
 | P2 | Async SSH library | High | TODO |
 | P2 | Retry logic | Low | TODO |
@@ -145,7 +147,7 @@ Config options per SSH adapter (`config/settings.yaml`):
 ## Quick Wins
 
 1. ✅ **Add `host` parameter to tool calls** — done for `linux_*`, `nginx_*` (except `nginx_stub_status`), `systemd_*`
-2. **Add keep-alive to SSH** — prevents connection timeout
+2. **Add keep-alive to SSH** — ✅ DONE (`transport.set_keepalive(30)` in `ssh_pool.py`)
 3. **Add connection retry** — handles transient network issues
 4. **Document SSH tunnel setup** — manual tunnel creation guide
 

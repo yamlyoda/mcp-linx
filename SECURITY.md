@@ -155,7 +155,8 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 3. ✅ **Output size limiting** — prevents memory exhaustion
 4. ✅ **Log line limiting** — prevents log flooding
 5. ✅ **Pydantic input validation** — type safety for tool inputs
-6. ✅ **No hardcoded secrets** — passwords and keys are read from config
+6. ✅ **No hardcoded secrets** — passwords and keys are read from config file
+   (plaintext in `config/settings.yaml`; `${VAR}` env-substitution is NOT implemented — see TODO A4)
 7. ✅ **No personal data** — no PII in source code
 
 ---
@@ -184,7 +185,7 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 
 ## Security Checklist
 
-- [x] No hardcoded secrets (passwords, API keys, tokens) — ✅ Passwords from config/env
+- [x] No hardcoded secrets (passwords, API keys, tokens) — ✅ No literals in code; secrets live in `config/settings.yaml` as plaintext (env-substitution `${VAR}` not implemented — see TODO A4)
 - [x] No personal data (PII) in source code — ✅ No PII found
 - [x] All user inputs validated — ✅ Command inputs use shlex.quote(), path allowlists
 - [x] SQL queries use parameterized statements — ✅ pg_tables uses %s parameterized query
@@ -246,7 +247,7 @@ pip-audit --skip-editable                  # No known vulnerabilities found
 | `src/mcp_linx/plugins/docker/tools.py` | ✅ Clean | No issues |
 | `src/mcp_linx/plugins/postgres/__init__.py` | ✅ Clean | No hardcoded credentials |
 | `src/mcp_linx/plugins/postgres/tools.py` | ✅ Fixed | SQL injection fixed with parameterized query |
-| `config/settings.yaml` | ✅ Clean | Passwords from env |
+| `config/settings.yaml` | ✅ Clean | Secrets in config file (plaintext; no env-substitution — see TODO A4) |
 | `tests/conftest.py` | ✅ Clean | Test fixtures only |
 | `src/mcp_linx/plugins/systemd/tools.py` | ✅ Clean | `service_ip_filter`: unit + bpftool (LPM-trie→CIDR), `_UNIT_RE` allowlist |
 | `src/mcp_linx/plugins/linux/tools.py` | ✅ Clean | `linux_firewall`: nft/ip rule/iptables/ufw read-only snapshot, marks parsing |

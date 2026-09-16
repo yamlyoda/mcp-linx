@@ -4,12 +4,22 @@
 > структура, команды, проверенные факты и правила чтения зафиксированы здесь,
 > перевыяснять их поиском по дереву НЕ нужно.
 
+## 0. Статус сессии (обновлять в конце каждой задачи)
+
+- 2026-09-16: A1 ✅ (sync `main()` + `__main__.py`), A2 ✅ (`_main_async` + stop_event + тест),
+  A5 ✅ / A6 ✅ (docs-only в `settings.yaml`), B10 ✅ (Trivy 0 HIGH/CRITICAL),
+  тесты склеены 5→2 + `conftest.make_plugin`, README split 498→372+371,
+  создан `AGENTS.md` + `docs/INDEX.md`. Гейт: **114 passed, 2 skipped**.
+- 2026-09-16 (волна 1): D1 ✅ / D4 ✅ / D5 ✅ (docs-only), C1 🟡 частично (authors; LICENSE/py.typed открыты).
+- Открыты: A3/A4/A7/A9/A10 (волна 3), B1/B2/B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C1-остаток (волна 1).
+
 ## 1. Карта репо
 
 ```
 src/mcp_linx/
-├── main.py                 # entry point: python -m mcp_linx.main (единственный рабочий запуск)
-├── __init__.py             # from mcp_linx.main import main (затеняет модуль — см. A1)
+├── main.py                 # entry point: sync main() -> _main_async(); запуски: mcp-linx, python -m mcp_linx, python -m mcp_linx.main
+├── __main__.py             # python -m mcp_linx (A1)
+├── __init__.py             # from mcp_linx.main import main (затеняет submodule — в тестах брать модуль через importlib)
 ├── multihost.py            # HostRegistry, именованные SSH-цели
 ├── security.py             # SecurityGuard (validate_command; validate_host НЕ вызывается — см. A3)
 ├── audit.py / ratelimit.py / types.py / context_aggregator.py
@@ -19,7 +29,7 @@ src/mcp_linx/
 │                           #   каждый: __init__.py + tools.py
 └── harness/                # agent_loop.py context.py sandbox.py plugin_manager.py
 config/settings.yaml        # дефолтный конфиг (CONFIG_PATH переопределяет)
-tests/unit/  tests/integration/   # unit: 111 passed, 2 skipped; integration требует Docker
+tests/unit/ (conftest.make_plugin — общий хелпер моков) + integration/   # unit: 114 passed, 2 skipped; integration требует Docker
 ```
 
 `src/` — ~7.4k строк / 37 файлов. Самый большой: `context_aggregator.py` (433).
@@ -32,7 +42,7 @@ tests/unit/  tests/integration/   # unit: 111 passed, 2 skipped; integration т�
 ## 2. Команды (venv проекта; глобальный python НЕ использовать)
 
 ```bash
-.venv/bin/python -m pytest -q          # гейт тестов (ожидается 111 passed, 2 skipped)
+.venv/bin/python -m pytest -q          # гейт тестов (ожидается 114 passed, 2 skipped)
 .venv/bin/ruff check src tests         # линтер (line-length 100, правила: E F I N W UP B C4 SIM)
 .venv/bin/ruff format --check src tests
 .venv/bin/python -m mypy src/mcp_linx  # strict=true
@@ -42,9 +52,9 @@ docker build -t mcp-linx:ci .          # образ для Trivy-гейта (job
 trivy image mcp-linx:ci --format json --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check
 ```
 
-Запуск сервера: ТОЛЬКО `python -m mcp_linx.main` (Dockerfile ENTRYPOINT, README).
-НЕ работают: `.venv/bin/mcp-linx` (console script на async-функцию — A1),
-`python -m mcp_linx` (нет `__main__.py` — A1).
+Запуск сервера: `mcp-linx`, `python -m mcp_linx`, `python -m mcp_linx.main` (все рабочие после A1).
+В тестах `import mcp_linx.main as m` возвращает ФУНКЦИЮ (shadowing в `__init__.py`) —
+модуль брать через `importlib.import_module("mcp_linx.main")`.
 
 ## 3. Проверенные факты (не перевыяснять)
 

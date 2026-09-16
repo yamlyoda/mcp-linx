@@ -33,17 +33,12 @@
 <a name="A"></a>
 ### A. Баги (подтверждены воспроизведением)
 
-- [ ] **A1 (P0). `mcp-linx` (console script) не запускает сервер.**
-  - Repro: `$ .venv/bin/mcp-linx` → `<coroutine object main at 0x…>`, `RuntimeWarning: coroutine 'main' was never awaited`, `exit_code=1`.
-  - Причина: `pyproject.toml` → `[project.scripts] mcp-linx = "mcp_linx.main:main"`, а `main` — `async def` (`iscoroutinefunction(main) is True`).
-  - Сопутствующее: нет `src/mcp_linx/__main__.py` → `python -m mcp_linx` падает (`No module named mcp_linx.__main__`); `src/mcp_linx/__init__.py` (`from mcp_linx.main import main`) затеняет модуль `main` функцией. Работает только `python -m mcp_linx.main` (его используют Dockerfile и README).
-  - Fix: sync-обёртка `def main() -> None: asyncio.run(_main())` + `__main__.py` + правка entry point/`__init__`; тест `iscoroutinefunction(main) is False`. Effort: ~30 мин.
-
-- [ ] **A2 (P0). Graceful shutdown — мёртвый код, который вдобавок глотает SIGTERM/SIGINT.**
-  - `main.py:118-128`: `plugin_manager_ref: dict = {}` **никогда не заполняется** → `shutdown_handler()` — no-op.
-  - `loop.add_signal_handler(SIGTERM/SIGINT, …)` при этом **переопределяет** дефолтное поведение: SIGTERM больше не завершает процесс (в Docker `docker stop` → 10 с ожидания → SIGKILL), Ctrl+C перехватывается пустой задачей.
-  - Реальная очистка (`destroy_all()` + `HostRegistry.close_all()`) срабатывает только в `finally` из `start_server()` при штатном возврате `mcp.run_async()`.
-  - Fix: либо снять регистрацию хендлеров, либо вернуть `PluginManager` из `start_server()` и по сигналу корректно останавливать цикл и закрывать SSH-пул. Нужен тест на сигналы. Effort: ~1.5 ч.
+- [x] **A1 (P0, FIXED 2026-09-16). `mcp-linx` (console script) не запускал сервер.**
+  - Было: `pyproject [project.scripts] mcp-linx = "mcp_linx.main:main"`, а `main` — `async def` → `<coroutine object main>`, `RuntimeWarning: coroutine never awaited`, `exit_code=1`; плюс не было `__main__.py` (`python -m mcp_linx` падал), а `__init__.py` затенял submodule функцией.
+  - Стало: sync `def main() -> None: asyncio.run(_main_async())` + новый `src/mcp_linx/__main__.py`; работают `mcp-linx`, `python -m mcp_linx`, `python -m mcp_linx.main`. Тест: `test_entrypoint.py::test_main_is_sync_entrypoint` + `test_package_main_module_exists`.
+- [x] **A2 (P0, FIXED 2026-09-16). Graceful shutdown был no-op и глотал SIGTERM/SIGINT.**
+  - Было: `plugin_manager_ref` никогда не заполнялся, а `add_signal_handler` переопределял дефолтное завершение → `docker stop` висел 10 с до SIGKILL.
+  - Стало: `_main_async()` ставит `stop_event` по сигналу и отменяет `server_task`; cleanup (`destroy_all` + `close_all`) выполняется в `finally` через `agent_loop.shutdown()`. Тест: `test_sigterm_triggers_shutdown` (эмуляция хендлера → задача отменена).
 
 - [ ] **A3 (P1). `allowed_hosts` — защита заявлена, но не работает; включение сломает multi-host.**
   - README (EN+RU, Security) обещает «Host validation: whitelist of allowed_hosts»; фактически `SecurityGuard.validate_host()` (`security.py:179`) **не вызывается в `src/`** — только из `tests/unit/test_security.py`.
@@ -56,12 +51,12 @@
   - Обещано в: `settings.yaml` (`# из env: POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN`), `docker-compose.yml` (`# LINX_SSH_PASSWORD: ${LINX_SSH_PASSWORD}` — код эту переменную не читает, см. A10), README (`password: null  # prefer env / key auth`), **`SECURITY.md:187/249`** («No hardcoded secrets — Passwords from config/env», «`config/settings.yaml` | ✅ Clean | Passwords from env»).
   - Fix: раскрытие `${VAR}` / `${VAR:-default}` при загрузке конфига + тесты (нет переменной / default / кавычки), синхронизировать доки. Effort: ~2 ч.
 
-- [ ] **A5 (P2). `postgres.ssh.tunnel_host` / `tunnel_port` — мёртвые ключи конфига.**
-  - Есть в `settings.yaml`; REMOTE_TROUBLESHOOTING #2 помечает «Not implemented!». Либо реализовать (sshtunnel), либо удалить/пометить. Effort: 1–4 ч.
+- [x] **A5 (P2, FIXED 2026-09-16, docs). `postgres.ssh.tunnel_host` / `tunnel_port` — ключи-заглушки.**
+  - Удалены из `settings.yaml`, добавлен NOTE со ссылкой на E2; PG/Redis ходят напрямую, задавать их бессмысленно.
+  - Остаток: `tunnel_host` ещё упоминается в `REMOTE_TROUBLESHOOTING.md` как план (#2) — это корректно (план, не обещание).
 
-- [ ] **A6 (P1). Дефолтный audit-лог нерабочий в рекомендованном Docker-деплое.**
-  - `telemetry.audit_log: true` + `audit_log_file: "/var/log/mcp-linx/audit.log"`: пользователь `mcp` в контейнере не может создать `/var/log/mcp-linx` → `PermissionError` → warning **на каждый вызов инструмента**, аудит фактически теряется.
-  - Fix: `audit_log_file: null` (вывод в stderr) по умолчанию + том в docker-compose для файлового аудита + docs. Effort: ~1 ч.
+- [x] **A6 (P1, FIXED 2026-09-16, docs). Дефолтный audit-лог неписуем в контейнере.**
+  - Код (`AuditLogger.log_call`) уже деградирует в stderr-warn; дефолт менять не стали (хост-запускам путь подходит); в `settings.yaml` добавлен комментарий: смонтировать том либо задать свой путь.
 
 - [ ] **A7 (P2). Секция `logging:` в `settings.yaml` мертва; `structlog` не используется.**
   - Нет `logging.config.dictConfig`; `structlog` импортируется **0** раз, но стоит в `dependencies`; `environment.mode`/`debug` не читаются, `telemetry.log_level` — тоже. Единственное чтение уровня: `main.py:44-45` из `Settings.log_level` (env `LOG_LEVEL`) + `basicConfig`. Т.е. мертвы: секция `logging:`, `telemetry.log_level`, `environment.mode`/`debug`.
@@ -106,7 +101,8 @@
 <a name="C"></a>
 ### C. Упаковка и гигиена репозитория
 
-- [ ] **C1. Нет файла `LICENSE`**, при этом README: «MIT» и pyproject: `license = {text = "MIT"}`; classifier `Development Status :: 3 - Alpha` конфликтует с `version = "1.0.0"`. → добавить `LICENSE` (+ `license-files`, PEP 639), согласовать статус разработки.
+- [x] **C1 (FIXED 2026-09-16, частично). Метаданные пакета.**
+  - `pyproject authors` → `mcp-linx team` (убран плейсхолдер `mcp-linx@example.com`). Остаток: нет файла `LICENSE` (нужен выбор лицензии), `Development Status :: 3 - Alpha`, нет `py.typed`.
 - [x] **C2. `CHANGELOG.md` создан (FIXED 2026-09-15)** — исторические фазовые логи + вехи перенесены туда; `TODO.md` сокращён до живого бэклога + TOC.
 - [ ] **C3. Нет `py.typed`** (PEP 561) при mypy strict и типизированном публичном API.
 - [ ] **C4. Нет `.env.example`**, хотя `pydantic-settings` читает `.env` (`main.py:31`, `env_file=".env"`) и `.gitignore` разрешает `!.env.example`. Задокументировать фактически поддерживаемые имена: `CONFIG_PATH`, `LOG_LEVEL`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `AGENT_LOOP` (+ `PLUGINS`, если починить — A10); связано с A4.
@@ -117,11 +113,14 @@
 <a name="D"></a>
 ### D. Документация (следует за фиксами кода)
 
-- [ ] **D1.** README (EN+RU, Security): убрать или исправить пункт про `allowed_hosts` — после решения по A3.
+- [x] **D1 (FIXED 2026-09-16, docs). README обещал `allowed_hosts`-whitelist как границу защиты.**
+  - README.md/README.ru.md переписаны: `validate_host()` существует и unit-tested, но не встроен в пути вызовов (A3) — как enforcement не рассматривать. Сам A3 остаётся открытым (развилка wire-up vs убрать).
 - [ ] **D2.** Добавить раздел про env-переменные (реальные имена полей `Settings`, см. A10) и `${VAR}` (A4), audit-лог и путь к нему (A6), корректное завершение по SIGTERM / `docker stop` (A2). Сейчас в `docs/DEVELOPMENT.md` про env **нет ничего**.
-- [ ] **D3.** README Configuration: пометить/убрать `tunnel_host` (A5) и секцию `logging:` (A7); задокументировать `rate_limit_*` (A9).
-- [ ] **D4.** REMOTE_TROUBLESHOOTING #6 «Connection health monitoring» помечен как TODO, **хотя частично уже реализован**: в пуле есть `transport.set_keepalive(30)`, проверка `is_active()` и реконнект мёртвого клиента. Остаётся ретрай для «живого, но разорванного» транспорта + метрики. Обновить статус.
-- [ ] **D5.** SECURITY.md: исправить ложную аттестацию про env-переменные (A4) — приоритетно, это security-отчёт.
+- [ ] **D3.** README Configuration: пометить/убрать `tunnel_host` (A5 ✅ — ключи удалены из `settings.yaml`, в README их и не было) и секцию `logging:` (A7); задокументировать `rate_limit_*` (A9).
+- [x] **D4 (FIXED 2026-09-16, docs). REMOTE_TROUBLESHOOTING #6 помечен TODO при частичной реализации.**
+  - Раздел #6 → 🟡 PARTIAL (keepalive + dead-reconnect done, retry/metrics → E1); таблица приоритетов и Quick Wins обновлены.
+- [x] **D5 (FIXED 2026-09-16, docs). SECURITY.md аттестовал секреты «from config/env».**
+  - Три места исправлены на правду: секреты — plaintext в `settings.yaml`, `${VAR}` не реализован (→ A4).
 
 <a name="E"></a>
 ### E. Роадмап фич (remote/SSH)

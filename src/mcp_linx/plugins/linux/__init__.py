@@ -115,6 +115,10 @@ class LinuxPlugin(DiagnosticPlugin):
             raise RuntimeError("Plugin not initialized")
 
         self._security.validate_command(command)
+        if host is not None:
+            # A3: registry-имя сверяем с allowed_hosts до резолва адаптера.
+            # Пустой whitelist (allowed_hosts: []) = multi-host без ограничений.
+            self._security.validate_host(host)
 
         try:
             result = await self._resolve_adapter(host).execute_command(command, timeout)

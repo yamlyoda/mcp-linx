@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
 import signal
 import sys
 from contextlib import suppress
@@ -26,7 +28,9 @@ from mcp_linx.harness import (
 )
 
 
-# Конфигурация через переменные окружения
+# Конфигурация через переменные окружения.
+# ВАЖНО (A10): без env_prefix имена вида LINX_* НЕ маппятся на эти поля.
+# Реальные имена: MCP_SERVER_NAME, CONFIG_PATH, LOG_LEVEL и т.д. (см. D2).
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -49,14 +53,40 @@ logging.basicConfig(
 
 logger = logging.getLogger("mcp_linx")
 
+_ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _expand_env_vars(text: str) -> str:
+    """Раскрыть ${VAR} / ${VAR:-default} из os.environ (A4).
+
+    Незаданная переменная без default → ValueError (fail-fast вместо
+    молчаливого пустого секрета).
+    """
+
+    def _repl(m: re.Match[str]) -> str:
+        name, default = m.group(1), m.group(2)
+        if name in os.environ:
+            return os.environ[name]
+        if default is not None:
+            return default
+        raise ValueError(f"environment variable {name} is not set (no default)")
+
+    return _ENV_VAR_RE.sub(_repl, text)
+
 
 def load_config(path: str) -> dict[str, Any]:
-    """Загрузить YAML-конфигурацию."""
+    """Загрузить YAML-конфигурацию с раскрытием ${VAR} / ${VAR:-default} из env (A4)."""
     config_file = Path(path)
     if config_file.exists():
         with open(config_file) as f:
-            result: dict[str, Any] = yaml.safe_load(f) or {}
-            return result
+            raw = f.read()
+        try:
+            expanded = _expand_env_vars(raw)
+        except ValueError as e:
+            logger.warning(f"Config env-substitution failed: {e}; using raw content")
+            expanded = raw
+        result: dict[str, Any] = yaml.safe_load(expanded) or {}
+        return result
     logger.warning(f"Config file not found: {path}, using defaults")
     return {}
 
@@ -113,22 +143,46 @@ async def start_server() -> None:
         await agent_loop.shutdown(mcp, plugin_manager)
 
 
-async def main() -> None:
-    """Точка входа для запуска сервера."""
-    plugin_manager_ref: dict[str, PluginManager] = {}
-
-    async def shutdown_handler() -> None:
-        if plugin_manager_ref.get("manager"):
-            await plugin_manager_ref["manager"].destroy_all()
-
+async def _main_async() -> None:
+    """Асинхронная точка входа: запуск сервера с обработкой SIGTERM/SIGINT."""
     loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    def _on_signal(sig: int) -> None:
+        logger.info(f"Received signal {signal.Signals(sig).name}, shutting down...")
+        stop_event.set()
+
     for sig in (signal.SIGTERM, signal.SIGINT):
         with suppress(NotImplementedError):
             # Windows doesn't support add_signal_handler
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_handler()))
+            loop.add_signal_handler(sig, _on_signal, sig)
 
-    await start_server()
+    server_task = asyncio.create_task(start_server())
+    stop_task = asyncio.create_task(stop_event.wait())
+    done, pending = await asyncio.wait(
+        {server_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+    )
+    if stop_task in done:
+        # Сигнал пришёл раньше завершения сервера: отменяем серверную задачу.
+        # start_server() выполняет cleanup (destroy_all + close_all) в finally
+        # через agent_loop.shutdown().
+        server_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await server_task
+    else:
+        stop_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await stop_task
+    for task in pending:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+def main() -> None:
+    """Синхронная точка входа для console script (`mcp-linx`) и `python -m mcp_linx`."""
+    asyncio.run(_main_async())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

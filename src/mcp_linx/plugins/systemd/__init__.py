@@ -92,6 +92,9 @@ class SystemdPlugin(DiagnosticPlugin):
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
         self._security.validate_command(command)
+        if host is not None:
+            # A3: registry-имя сверяем с allowed_hosts до резолва адаптера.
+            self._security.validate_host(host)
         try:
             result = await self._resolve_adapter(host).execute_command(command, timeout)
             result["stdout"] = self._security.limit_log_lines(result["stdout"])

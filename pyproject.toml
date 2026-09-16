@@ -5,7 +5,7 @@ description = "MCP-сервер для диагностики Linux-инфрас
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
-authors = [{name = "mcp-linx", email = "mcp-linx@example.com"}]
+authors = [{name = "mcp-linx team"}]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

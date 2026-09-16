@@ -348,7 +348,9 @@ SecurityGuard provides:
 - **Dangerous command blocking**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs etc.
 - **Output size limiting**: Truncates large command outputs
 - **Log line limiting**: Maximum number of log lines returned
-- **Host validation**: Whitelist of allowed_hosts
+- **Host validation**: `SecurityGuard.validate_host()` checks a host against the
+  `allowed_hosts` whitelist (unit-tested, but not yet wired into plugin call paths —
+  see TODO A3; do not rely on it as an enforcement boundary yet)
 - **Input validation**: Pydantic schemas for all tool inputs
 
 ---
