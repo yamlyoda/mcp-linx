@@ -65,7 +65,7 @@ security:
   readonly: true                    # Only read-only operations
   max_command_output_size: 10000
   max_log_lines: 500
-  command_timeout_seconds: 30
+  command_timeout_seconds: 30      # Default plugin command timeout (per-tool timeout wins)
 
 # Multi-host: named remote targets for SSH-based diagnostics.
 hosts: {}

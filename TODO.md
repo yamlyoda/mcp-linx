@@ -43,7 +43,7 @@
 - [x] **A3 (P1, FIXED 2026-09-16, вариант b — wire-up). `allowed_hosts` — защита заявлена и теперь работает.**
   - Было: `SecurityGuard.validate_host()` (`security.py`) не вызывался в `src/` (только из тестов); README обещал whitelist как границу защиты.
   - Стало: вызов добавлен в `_run_command`/`_run` **всех 3 плагинов с параметром `host`** (`linux/__init__.py:121`, `nginx/__init__.py:104`, `systemd/__init__.py:97`) — проверка идёт до `_resolve_adapter`, т.е. до обращения к сети.
-  - Семантика зафиксирована в `settings.yaml:37-42`: `hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели; пустой `[]` = без ограничений (свободный multi-host).
+  - Семантика зафиксирована в `settings.yaml:41-44`: `hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели; пустой `[]` = без ограничений (свободный multi-host).
   - Тесты: `test_entrypoint.py::TestAllowedHosts` — хост вне whitelist блокируется до резолва адаптера; пустой whitelist пропускает.
 
 - [x] **A4 (P0, FIXED 2026-09-16). `${VAR}`-подстановка в YAML реализована — секреты не обязательно держать plaintext.**
@@ -63,17 +63,19 @@
 - [ ] **A7 (P2, 🟡 docs-only NOTE 2026-09-16). Секция `logging:` в `settings.yaml` мертва; `structlog` не используется.**
   - Нет `logging.config.dictConfig`; `structlog` импортируется **0** раз, но стоит в `dependencies`; `environment.mode`/`debug` не читаются, `telemetry.log_level` — тоже. Единственное чтение уровня: `main.py:44-45` из `Settings.log_level` (env `LOG_LEVEL`) + `basicConfig`. Т.е. мертвы: секция `logging:`, `telemetry.log_level`, `environment.mode`/`debug`.
   - Fix: применить `dictConfig(config["logging"])` **или** удалить секцию и зависимость (уменьшит образ). Effort: 1–2 ч.
-  - NB (2026-09-16): в `settings.yaml:169-171` добавлен NOTE (секция зарезервирована под `dictConfig`); код по-прежнему её не читает.
+  - NB (2026-09-16): в `settings.yaml:173-175` добавлен NOTE (секция зарезервирована под `dictConfig`); код по-прежнему её не читает.
 
 - [ ] **A8 (P1). Дублирование SSH-логики: `SSHAdapter` vs `SSHConnectionPool`.**
   - `SSHAdapter` — копия host-key policy / known_hosts / connect / exec, но **без** `connect_timeout` и без `set_keepalive` (в пуле оба есть) и без переиспользования соединений. Два код-пути → расхождение поведения.
   - Fix: `SSHAdapter` как тонкая обёртка над `SSHConnectionPool` + `exec_command_sync` (единый код-путь). Effort: ~2 ч.
 
-- [ ] **A9 (P2, 🟡 частично: rate-limit ✅ 2026-09-16). Заглушки и мёртвый/недоступный API.**
-  - `SecurityGuard.apply_timeout()` возвращает `func` без изменений и не используется.
-  - `# nosec B601` в `SSHAdapter.ping()` (`adapters/ssh.py:114`) стоит на `timeout=5`, а не на `exec_command` (корректные аннотации — `ssh.py:151`, `ssh_pool.py:116`) → аннотация на строке 114 бессмысленна.
-  - NB (2026-09-16, подтверждено `bandit -c pyproject.toml -r src/mcp_linx -q`): 4 WARNING «nosec encountered (B507), but no failed test» — `ssh.py:38`, `ssh.py:43`, `ssh_pool.py:66`, `ssh_pool.py:71`; при этом bandit = **0 issues** (все severity), т.е. аннотации `# nosec B507` избыточны — их (и `B601` на `timeout=5`) следует удалить.
-  - `rate_limit_max_calls` / `rate_limit_window_seconds` ✅ (2026-09-16): задокументированы в `settings.yaml:33-36`; реализация жива (`ratelimit.py` → `agent_loop._make_handler`). Остаются: `apply_timeout()` (мёртв) и бессмысленный `# nosec B601`. Effort: ~1 ч.
+- [x] **A9 (P2, FIXED 2026-09-17. `apply_timeout` удалён, rate-limit ✅; wire-up `command_timeout_seconds` в дефолты плагинов, +15 тестов). Заглушки и мёртвый/недоступный API.**
+  - ✅ `SecurityGuard.apply_timeout()` **удалён** (2026-09-17): был заглушкой (`timeout = timeout or self._command_timeout; return func` — без обёртки), не вызывался нигде (0 ссылок в `src/`, `tests/`, docs). Таймауты реально применяются в `adapters/base.py:102` (`asyncio.wait_for`) и через paramiko `timeout=`.
+  - ❌ **Опровергнуто** (2026-09-17): прежний тезис «аннотации `# nosec` бессмысленны — удалить» **неверен**. Probe (копия файла без аннотаций → `bandit`): удаление `# nosec B507` (×4) даёт 4×High `B507` (`ssh.py:38/43`, `ssh_pool.py:66/71`), удаление `# nosec B601` на `ssh.py:114` — Medium `B601` (отчёт на строке 112, `ping()`), удаление `# nosec B110`/`B101` — тоже реальные находки. Все аннотации load-bearing ⇒ **ничего не удалять**; 4 WARNING «nosec encountered (B507), but no failed test» — ложное срабатывание эвристики bandit на multi-line вызовах.
+  - 🔎 Новая находка (2026-09-17): после удаления `apply_timeout` атрибут `SecurityGuard._command_timeout` (`security.py:95`) нигде не читается → ключ `security.command_timeout_seconds` на таймауты НЕ влияет (они задаются per-tool в плагинах). РЕШЕНО (2026-09-17): ключ проведён в дефолты плагинов — см. следующий пункт.
+  - [wire-up A9, 2026-09-17] `security.command_timeout_seconds` больше не мёртвый: `SecurityGuard.command_timeout` (property, `security.py:98`) → `DiagnosticPlugin.command_timeout` (`plugins/base.py:54`, raises RuntimeError без `initialize`) → в `_run*` шести плагинов (`linux`, `nginx`, `systemd`, `kubernetes`, `netdiag`, `redis`) `if timeout is None: timeout = self.command_timeout` перед `adapter.execute_command`. Явный per-tool timeout сохраняется и перекрывает конфиг.
+  - Тесты: `tests/unit/test_command_timeout.py` (+15) — 6 плагинов × [дефолт из конфига / override], tool-путь `linux_disk` (без явного timeout), дефолт guard = 30, RuntimeError без init. Docs: `settings.yaml:32-35`, README / README.ru / `docs/ARCHITECTURE.md` (инлайн-комментарий ключа).
+  - `rate_limit_max_calls` / `rate_limit_window_seconds` ✅ (2026-09-16): задокументированы в `settings.yaml:37-40`; реализация жива (`ratelimit.py` → `agent_loop._make_handler`).
 
 - [ ] **A10 (P2, 🟡 docs-only NOTE 2026-09-16). Объявленные env-переменные и настройки не подключены.**
   - `Settings.plugins` (env `PLUGINS`, дефолт `"linux,nginx,docker,postgres"`) **не используется нигде** — состав плагинов определяет только `config/settings.yaml::plugins.enabled` через `PluginManager.load_plugins()`. Настройка вводит в заблуждение (и не соответствует факту 10 плагинов).
@@ -155,7 +157,7 @@
 
 - [x] **Волна 1 — правда в доках (2026-09-16):** D1 ✅, D4 ✅, D5 ✅, C1 🟡 (authors ✅; LICENSE/`py.typed` открыты) — остаток D2/D3.
 - [x] **Волна 2 — быстрые баги (2026-09-16):** A1 ✅, A2 ✅, A5 ✅, A6 ✅ (гейт 114 → 120 passed).
-- [ ] **Волна 3 — секьюрити-контур (🟡 2026-09-16):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста) — закрыты; открыты C4 (`.env.example`), A7 (docs-NOTE), A9 (🟡 rate-limit ✅), A10 (🟡 только NOTE).
+- [ ] **Волна 3 — секьюрити-контур (🟡 2026-09-17):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста), A9 ✅ (`apply_timeout` удалён; rate-limit ✅; `command_timeout_seconds` проведён в дефолты плагинов, +15 тестов) — открыты C4 (`.env.example`), A7 (docs-NOTE), A10 (🟡 только NOTE).
 - [ ] **Волна 4 — качество:** B1–B7, C2, C3, C5.
 - [ ] **Волна 5 — рефакторинг и фичи:** A8, E1, E2.
 

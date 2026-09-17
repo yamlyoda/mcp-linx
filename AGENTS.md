@@ -12,10 +12,11 @@
   создан `AGENTS.md` + `docs/INDEX.md`. Гейт: **114 passed, 2 skipped**.
 - 2026-09-16 (волна 1): D1 ✅ / D4 ✅ / D5 ✅ (docs-only), C1 🟡 частично (authors; LICENSE/py.typed открыты).
 - 2026-09-16 (волна 2, код): A1 ✅ / A2 ✅ (`_main_async` + `stop_event` + тест), A5 ✅ / A6 ✅ (docs-only).
-- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:37-42` + 2 теста).
-  A7 🟡 (docs-NOTE), A9 🟡 (rate-limit жив и задокументирован; `apply_timeout` мёртв), A10 🟡 (только NOTE в `main.py:32`/compose).
-- Гейт волны 3: **120 passed, 2 skipped**; `ruff check` / `ruff format --check` зелёные (попутно: newline в `__init__.py`, unused `os`, `SecurityError` из `mcp_linx.security`, `initialize({})`).
-- Открыты: A7/A9/A10-остаток (волна 3), B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C4/C1-остаток.
+- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:41-44` + 2 теста).
+  A7 🟡 (docs-NOTE), A9 ✅ (rate-limit жив и задокументирован; закрыт 2026-09-17), A10 🟡 (только NOTE в `main.py:32`/compose).
+- 2026-09-17 (волна 3, доводка A9 CLOSED): `SecurityGuard.apply_timeout()` **удалён** (мёртвая заглушка, 0 вызовов); тезис аудита про «бессмысленные `# nosec` B507/B601» **опровергнут** probe'ом (аннотации load-bearing, bandit-WARNING ложный); `command_timeout_seconds` проведён **в дефолты плагинов** (`SecurityGuard.command_timeout` → `DiagnosticPlugin.command_timeout` → `timeout = self.command_timeout` в `_run*` 6 плагинов; explicit per-tool timeout перекрывает). Тесты: `tests/unit/test_command_timeout.py` (+15).
+- Гейт волны 3: **135 passed, 2 skipped**; `ruff check` / `ruff format --check` / `mypy` / `bandit` зелёные (bandit = 0 issues; 4 WARNING про nosec — ложные).
+- Открыты: A7/A10-остаток (волна 3), B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C4/C1-остаток.
 
 ## 1. Карта репо
 

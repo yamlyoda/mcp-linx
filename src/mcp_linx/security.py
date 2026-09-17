@@ -95,6 +95,15 @@ class SecurityGuard:
         self._command_timeout = int(self._config.get("command_timeout_seconds", 30))
         self._allowed_hosts = set(self._config.get("allowed_hosts", ["localhost"]))
 
+    @property
+    def command_timeout(self) -> int:
+        """Дефолтный таймаут команд (сек) из `security.command_timeout_seconds`.
+
+        A9: используется плагинами как значение по умолчанию, когда инструмент
+        не передал таймаут явно (explicit per-tool timeout имеет приоритет).
+        """
+        return self._command_timeout
+
     def validate_command(self, command: str) -> None:
         """Валидация команды на опасные операции
 
@@ -184,12 +193,6 @@ class SecurityGuard:
         """
         if self._allowed_hosts and host not in self._allowed_hosts:
             raise SecurityError(f"Host {host} is not in allowed_hosts list")
-
-    def apply_timeout(self, func: Any, timeout: int | None = None) -> Any:
-        """Применение таймаута к функции (async)"""
-        timeout = timeout or self._command_timeout
-        # В реальности — обернуть в asyncio.wait_for
-        return func
 
 
 class CommandInput(BaseModel):

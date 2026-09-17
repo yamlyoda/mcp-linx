@@ -87,10 +87,13 @@ class SystemdPlugin(DiagnosticPlugin):
             await self._adapter.disconnect()
 
     async def _run(
-        self, command: str, timeout: int = 15, host: str | None = None
+        self, command: str, timeout: int | None = None, host: str | None = None
     ) -> dict[str, Any]:
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
+        # A9: без явного таймаута инструмента берём security.command_timeout_seconds
+        if timeout is None:
+            timeout = self.command_timeout
         self._security.validate_command(command)
         if host is not None:
             # A3: registry-имя сверяем с allowed_hosts до резолва адаптера.

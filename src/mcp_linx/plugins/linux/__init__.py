@@ -107,13 +107,16 @@ class LinuxPlugin(DiagnosticPlugin):
             await self._adapter.disconnect()
 
     async def _run_command(
-        self, command: str, timeout: int = 30, host: str | None = None
+        self, command: str, timeout: int | None = None, host: str | None = None
     ) -> dict[str, Any]:
         if not self._adapter:
             raise RuntimeError("Plugin not initialized")
         if self._security is None:
             raise RuntimeError("Plugin not initialized")
 
+        # A9: без явного таймаута инструмента берём security.command_timeout_seconds
+        if timeout is None:
+            timeout = self.command_timeout
         self._security.validate_command(command)
         if host is not None:
             # A3: registry-имя сверяем с allowed_hosts до резолва адаптера.

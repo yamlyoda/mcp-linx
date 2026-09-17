@@ -103,9 +103,12 @@ class KubernetesPlugin(DiagnosticPlugin):
             parts += ["--context", shlex.quote(self._context)]
         return " ".join(parts)
 
-    async def _run(self, command: str, timeout: int = 20) -> dict[str, Any]:
+    async def _run(self, command: str, timeout: int | None = None) -> dict[str, Any]:
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
+        # A9: без явного таймаута инструмента берём security.command_timeout_seconds
+        if timeout is None:
+            timeout = self.command_timeout
         self._security.validate_command(command)
         try:
             result = await self._adapter.execute_command(command, timeout)

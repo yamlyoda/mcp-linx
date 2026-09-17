@@ -98,9 +98,12 @@ class RedisPlugin(DiagnosticPlugin):
             parts += ["-a", shlex.quote(self._password)]
         return " ".join(parts)
 
-    async def _run_redis_cli(self, args: str, timeout: int = 15) -> dict[str, Any]:
+    async def _run_redis_cli(self, args: str, timeout: int | None = None) -> dict[str, Any]:
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
+        # A9: без явного таймаута инструмента берём security.command_timeout_seconds
+        if timeout is None:
+            timeout = self.command_timeout
         command = f"{self._base_args()} {args}"
         self._security.validate_command(command)
         try:

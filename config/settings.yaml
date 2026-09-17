@@ -29,6 +29,10 @@ security:
   max_command_output_size: 10000  # байт
   max_log_lines: 500
   max_search_results: 100
+  # A9: дефолтный таймаут команд плагинов (сек) — применяется в `_run*` плагинов
+  # (linux, nginx, systemd, kubernetes, netdiag, redis), когда инструмент не передал
+  # таймаут явно; explicit per-tool timeout его перекрывает. Путь:
+  # SecurityGuard.command_timeout → DiagnosticPlugin.command_timeout → execute_command.
   command_timeout_seconds: 30
   # Rate limiting: скользящее окно на инструмент (реализован в ratelimit.py,
   # применяется в agent_loop._make_handler; A9 — ключи живые, не заглушки).

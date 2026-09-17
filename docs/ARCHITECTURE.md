@@ -116,7 +116,7 @@ security:
   readonly: true
   max_command_output_size: 10000
   max_log_lines: 500
-  command_timeout_seconds: 30
+  command_timeout_seconds: 30      # Дефолт таймаутов команд плагинов (per-tool перекрывает)
 
 # Multi-host: named remote targets for SSH-based diagnostics.
 hosts: {}

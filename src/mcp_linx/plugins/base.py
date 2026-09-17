@@ -14,6 +14,7 @@ from mcp_linx.types import (
 if TYPE_CHECKING:
     from mcp_linx.adapters.base import BaseAdapter
     from mcp_linx.multihost import HostRegistry
+    from mcp_linx.security import SecurityGuard
 
 
 @dataclass
@@ -46,6 +47,23 @@ class DiagnosticPlugin(ABC):
 
     # Primary-адаптер плагина; устанавливается конкретной реализацией в initialize().
     _adapter: BaseAdapter | None = None
+
+    # SecurityGuard плагина; устанавливается конкретной реализацией в initialize().
+    _security: SecurityGuard | None = None
+
+    @property
+    def command_timeout(self) -> int:
+        """Дефолтный таймаут команд из `security.command_timeout_seconds`.
+
+        A9: плагины применяют его в `_run*`, когда инструмент не передал таймаут
+        явно; explicit per-tool timeout всегда имеет приоритет.
+
+        Raises:
+            RuntimeError: плагин не инициализирован (guard ещё не создан).
+        """
+        if self._security is None:
+            raise RuntimeError("Plugin not initialized")
+        return self._security.command_timeout
 
     @abstractmethod
     async def initialize(self, config: PluginConfig) -> None:

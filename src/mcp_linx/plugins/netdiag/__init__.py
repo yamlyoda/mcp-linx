@@ -99,7 +99,7 @@ class NetdiagPlugin(DiagnosticPlugin):
         if self._adapter:
             await self._adapter.disconnect()
 
-    async def _run_privileged(self, command: str, timeout: int = 20) -> dict[str, Any]:
+    async def _run_privileged(self, command: str, timeout: int | None = None) -> dict[str, Any]:
         """Выполнение привилегированной пробы со строгим allowlist префиксов.
 
         Обходит readonly-проверку (runuser/tcpdump не read-only по смыслу),
@@ -108,6 +108,9 @@ class NetdiagPlugin(DiagnosticPlugin):
         """
         if not self._adapter or not self._security:
             raise RuntimeError("Plugin not initialized")
+        # A9: без явного таймаута инструмента берём security.command_timeout_seconds
+        if timeout is None:
+            timeout = self.command_timeout
         stripped = command.strip()
         if not stripped.startswith(_PRIVILEGED_PREFIXES):
             raise RuntimeError(f"Privileged command not allowed: {stripped[:60]}")
