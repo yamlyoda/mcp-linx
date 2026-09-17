@@ -60,9 +60,15 @@ docker compose run --rm mcp-linx
 
 Main configuration file: `config/settings.yaml`
 
-Environment variables: copy `.env.example` → `.env` (read by `pydantic-settings`;
-names without a prefix, e.g. `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP`).
-Secrets inside `settings.yaml` support `${VAR}` / `${VAR:-default}` expansion (A4).
+Environment variables: copy `.env.example` → `.env` for the five server settings
+only (names without a prefix). Plugin secrets must be supplied in the **process
+environment**, not added to `.env`: unknown dotenv keys cause a validation error.
+YAML expands `${VAR}` / `${VAR:-default}` from that environment; a missing variable
+without a default logs a warning and falls back to the entire unexpanded YAML.
+An empty environment value does not trigger the default. Expansion is textual
+(before YAML parsing), so values must remain valid in their YAML quoting context.
+See [Environment and configuration](docs/DEVELOPMENT.md#environment-and-configuration)
+for local and Docker setup, audit logging, and shutdown behavior.
 
 ```yaml
 security:
@@ -70,6 +76,9 @@ security:
   max_command_output_size: 10000
   max_log_lines: 500
   command_timeout_seconds: 30      # Default plugin command timeout (per-tool timeout wins)
+  rate_limit_max_calls: 60         # Calls per tool per sliding window
+  rate_limit_window_seconds: 60    # Window duration in seconds
+  allowed_hosts: [localhost]      # Add names from hosts: to permit remote calls
 
 # Multi-host: named remote targets for SSH-based diagnostics.
 hosts: {}
@@ -99,7 +108,7 @@ plugins:
   postgres:
     host: "localhost"
     port: 5432
-    password: ""          # from env: POSTGRES_PASSWORD
+    password: "${POSTGRES_PASSWORD:-}" # From process environment; empty if absent
     # SSL/TLS modes: disable | allow | prefer | require | verify-ca | verify-full
     # verify-full is recommended for production (verifies CA + hostname)
     ssl_mode: "prefer"
@@ -107,7 +116,7 @@ plugins:
   redis:
     host: "localhost"
     port: 6379
-    password: ""          # from env: REDIS_PASSWORD
+    password: "${REDIS_PASSWORD:-}" # From process environment; empty if absent
 
   nginx:
     log_path: "/var/log/nginx"
@@ -145,7 +154,7 @@ plugins:
 - `docker_info` — Full container or system info
 - `docker_events` — Docker events
 - `docker_system_df` — Docker disk usage
-- `docker_prune` — Remove stopped containers
+- `docker_prune` — Preview stopped containers (dry-run by default); deletion requires both `execute=true` and `confirm=true`
 
 ### PostgreSQL Plugin (7 tools)
 - `pg_connections` — Active connections
@@ -318,13 +327,14 @@ mcp-linx/
 │       ├── prometheus/       # 4 tools
 │       └── loki/             # 3 tools
 ├── config/settings.yaml      # Server configuration
-├── tests/                    # Unit + integration tests (111 passing, 2 skipped)
+├── tests/                    # Unit + integration tests; see Testing below
+├── REMOTE_TROUBLESHOOTING.md   # Remote/SSH roadmap
 └── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md,
-                              #   REMOTE_TROUBLESHOOTING.md, INCIDENT_504.md, skills/
+                              #   INCIDENT_504.md, skills/
 ```
 
 Key features:
-- **Harness ideology**: everything is a plugin — tools, agent loops, sandboxes, context compactors; plugins are auto-discovered from the `plugins/` directory
+- **Harness ideology**: diagnostic plugins are auto-discovered from `src/mcp_linx/plugins/`; agent loops, sandboxes and context compactors are separate harness components.
 - **Security**: readonly mode blocks write commands (rm, mkfs, dd, fork bombs, etc.)
 - **Context Aggregator**: detects cross-component correlations
 - **Adapters**: Local subprocess, SSH (paramiko), Docker API
@@ -352,10 +362,13 @@ SecurityGuard provides:
 - **Dangerous command blocking**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs etc.
 - **Output size limiting**: Truncates large command outputs
 - **Log line limiting**: Maximum number of log lines returned
-- **Host validation**: `SecurityGuard.validate_host()` checks a host against the
-  `allowed_hosts` whitelist (unit-tested, but not yet wired into plugin call paths —
-  see TODO A3; do not rely on it as an enforcement boundary yet)
-- **Input validation**: Pydantic schemas for all tool inputs
+- **Host validation**: Linux, Nginx and Systemd validate an explicit `host`
+  against `security.allowed_hosts` before resolving the adapter. These are registry
+  names, not destination IPs; define them in `hosts:` and include them in the allowlist.
+  An empty allowlist disables this restriction. This is not a universal network ACL
+  for API clients or probe destinations.
+- **Input validation**: MCP handlers accept a `params` dictionary; field checks are
+  implemented by individual tools, not dedicated Pydantic schemas for every tool.
 
 ---
 
@@ -373,6 +386,5 @@ ContextAggregator analyzes states of all components and detects correlations:
 ---
 
 ## License
-
-MIT
-
+MIT is declared in package metadata. A standalone `LICENSE` file is still missing;
+license text and copyright attribution remain pending (TODO C1).

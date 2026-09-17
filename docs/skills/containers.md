@@ -12,7 +12,7 @@
 | `docker_info` | Container/system info |
 | `docker_events` | Docker events |
 | `docker_system_df` | Disk usage |
-| `docker_prune` | Remove stopped containers |
+| `docker_prune` | Preview stopped containers (dry-run); deletion requires both `execute=true` and `confirm=true` |
 
 ## Kubernetes (6 tools)
 

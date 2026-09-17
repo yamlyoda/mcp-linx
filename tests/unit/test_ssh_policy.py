@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import paramiko
 import pytest
@@ -16,6 +17,17 @@ class _FakeSSHClient:
         self.connect_kwargs: dict[str, Any] | None = None
         self.closed = False
         self.host_keys: list[Any] = []
+        self.transport = MagicMock()
+        self.transport.is_active.return_value = True
+        self.exec_command = MagicMock()
+        stdout, stderr = MagicMock(), MagicMock()
+        stdout.read.return_value = b"OK\n"
+        stdout.channel.recv_exit_status.return_value = 0
+        stderr.read.return_value = b""
+        self.exec_command.return_value = (MagicMock(), stdout, stderr)
+
+    def get_transport(self):
+        return self.transport
 
     def set_missing_host_key_policy(self, policy: Any) -> None:
         self.policy = policy
@@ -104,6 +116,7 @@ class TestConnectParams:
             "port": 2222,
             "username": "user",
             "key_filename": "~/.ssh/id_rsa",
+            "timeout": 10,
         }
         assert "password" not in kwargs
 
@@ -118,6 +131,7 @@ class TestConnectParams:
             "hostname": "10.0.0.2",
             "port": 22,
             "password": "secret",
+            "timeout": 10,
         }
 
     @pytest.mark.asyncio
@@ -148,3 +162,79 @@ class TestConnectParams:
 
         assert created[0].closed is True
         assert adapter._client is None
+
+
+@pytest.mark.asyncio
+async def test_pool_reuse_keepalive_and_reconnect(ssh_mod):
+    mod, created = ssh_mod
+    adapter = mod.SSHAdapter({"host": "example.com"})
+    assert adapter.client is None
+    await adapter.connect()
+    await adapter.connect()
+    assert len(created) == 1
+    assert adapter.client is created[0]
+    created[0].transport.set_keepalive.assert_called_once_with(30)
+    created[0].transport.is_active.return_value = False
+    result = await adapter.execute_command("echo OK", timeout=7)
+    assert len(created) == 2
+    assert created[0].closed
+    assert adapter.client is created[1]
+    created[1].exec_command.assert_called_once_with("echo OK", timeout=7)
+    assert result == {"stdout": "OK\n", "stderr": "", "returncode": 0, "command": "echo OK"}
+    await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_isolated_and_reopen(ssh_mod):
+    mod, created = ssh_mod
+    first = mod.SSHAdapter({"host": "example.com"})
+    second = mod.SSHAdapter({"host": "example.com"})
+    await first.connect()
+    await second.connect()
+    await first.disconnect()
+    await first.disconnect()
+    assert created[0].closed
+    assert not created[1].closed
+    await first.connect()
+    assert len(created) == 3
+    assert first.client is created[2]
+    await first.disconnect()
+    await second.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("returncode, expected", [(0, True), (1, False)])
+async def test_ping_uses_exit_status(ssh_mod, returncode, expected):
+    mod, created = ssh_mod
+    adapter = mod.SSHAdapter()
+    await adapter.connect()
+    created[0].exec_command.return_value[1].channel.recv_exit_status.return_value = returncode
+    assert await adapter.ping() is expected
+    created[0].exec_command.assert_called_once_with("echo OK", timeout=5)
+    await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_connection_error_ping_and_execute(ssh_mod, monkeypatch):
+    mod, _ = ssh_mod
+    adapter = mod.SSHAdapter()
+    monkeypatch.setattr(adapter._pool, "get", MagicMock(side_effect=OSError("unreachable")))
+    assert await adapter.ping() is False
+    with pytest.raises(OSError, match="unreachable"):
+        await adapter.execute_command("echo OK")
+    assert adapter.client is None
+
+
+@pytest.mark.asyncio
+async def test_execute_and_parse_and_command_error(ssh_mod):
+    mod, created = ssh_mod
+    adapter = mod.SSHAdapter()
+    assert await adapter.execute_and_parse("echo OK", str.strip) == "OK"
+    created[0].exec_command.assert_called_once_with("echo OK", timeout=30)
+    _, stdout, stderr = created[0].exec_command.return_value
+    stdout.read.return_value = b""
+    stdout.channel.recv_exit_status.return_value = 1
+    stderr.read.return_value = b"failed"
+    with pytest.raises(RuntimeError, match="Command failed: failed"):
+        await adapter.execute_and_parse("echo OK", str.strip)
+    await adapter.disconnect()

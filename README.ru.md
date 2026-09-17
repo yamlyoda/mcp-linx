@@ -53,9 +53,15 @@ docker compose run --rm mcp-linx
 
 **Русский:** Основной конфигурационный файл: `config/settings.yaml`
 
-Переменные окружения: скопируйте `.env.example` → `.env` (читает `pydantic-settings`,
-имена без префикса: `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP` и др.).
-Внутри `settings.yaml` работает подстановка `${VAR}` / `${VAR:-default}` (A4).
+Переменные окружения: скопируйте `.env.example` → `.env` только для пяти настроек
+сервера (имена без префикса). Секреты плагинов передавайте через **окружение процесса**,
+не через `.env`: неизвестные ключи в dotenv вызывают ошибку валидации.
+`${VAR}` / `${VAR:-default}` в YAML читают окружение процесса. Если переменная
+отсутствует и default не задан, сервер пишет warning и использует весь исходный YAML
+без подстановки. Пустое значение переменной не включает default. Подстановка текстовая,
+до разбора YAML: значение должно быть допустимо в используемом YAML-кавычении.
+Настройка локального запуска и Docker, аудит и завершение описаны в
+[руководстве разработчика](docs/DEVELOPMENT.md#environment-and-configuration).
 
 ```yaml
 security:
@@ -63,6 +69,9 @@ security:
   max_command_output_size: 10000
   max_log_lines: 500
   command_timeout_seconds: 30      # Дефолтный таймаут команд плагинов (per-tool перекрывает)
+  rate_limit_max_calls: 60         # Вызовов на инструмент за скользящее окно
+  rate_limit_window_seconds: 60    # Размер окна в секундах
+  allowed_hosts: [localhost]      # Добавьте имена из hosts: для удалённых вызовов
 
 # Multi-host: named remote targets for SSH-based diagnostics.
 # Мультихост: именованные удалённые хосты для диагностики по SSH.
@@ -94,7 +103,7 @@ plugins:
   postgres:
     host: "localhost"
     port: 5432
-    password: ""          # from env: POSTGRES_PASSWORD
+    password: "${POSTGRES_PASSWORD:-}" # Из окружения процесса; пусто, если не задано
     # SSL/TLS modes: disable | allow | prefer | require | verify-ca | verify-full
     # verify-full is recommended for production (verifies CA + hostname)
     ssl_mode: "prefer"
@@ -102,7 +111,7 @@ plugins:
   redis:
     host: "localhost"
     port: 6379
-    password: ""          # from env: REDIS_PASSWORD
+    password: "${REDIS_PASSWORD:-}" # Из окружения процесса; пусто, если не задано
 
   nginx:
     log_path: "/var/log/nginx"
@@ -140,7 +149,7 @@ plugins:
 - `docker_info` — Full container or system info
 - `docker_events` — Docker events
 - `docker_system_df` — Docker disk usage
-- `docker_prune` — Remove stopped containers
+- `docker_prune` — Dry-run по умолчанию; удаление требует `execute=true` и `confirm=true`
 
 ### PostgreSQL Plugin (7 tools)
 - `pg_connections` — Active connections
@@ -230,7 +239,7 @@ plugins:
 - `docker_info` — Полная информация о контейнере или системе
 - `docker_events` — Docker события
 - `docker_system_df` — Использование диска Docker
-- `docker_prune` — Удаление остановленных контейнеров
+- `docker_prune` — Просмотр кандидатов; удаление только с `execute=true` и `confirm=true`
 
 ### PostgreSQL Plugin
 - `pg_connections` — Активные подключения
@@ -315,13 +324,14 @@ mcp-linx/
 │       ├── prometheus/       # 4 инструмента
 │       └── loki/             # 3 инструмента
 ├── config/settings.yaml      # Конфигурация сервера
-├── tests/                    # Unit + интеграционные тесты (111 проходят, 2 пропущено)
+├── tests/                    # Unit + интеграционные тесты; см. Тестирование
+├── REMOTE_TROUBLESHOOTING.md   # Роадмап remote/SSH
 └── docs/                     # ARCHITECTURE.md, DEVELOPMENT.md, SKILLS.md,
-                              #   REMOTE_TROUBLESHOOTING.md, INCIDENT_504.md, skills/
+                              #   INCIDENT_504.md, skills/
 ```
 
 Основные возможности:
-- **Идеология Harness**: всё — плагин (инструменты, agent loops, песочницы, компакторы контекста); плагины обнаруживаются автоматически из директории `plugins/`
+- **Идеология Harness**: диагностические плагины обнаруживаются в `src/mcp_linx/plugins/`; agent loops, песочницы и компакторы контекста — отдельные компоненты harness.
 - **Безопасность**: readonly-режим блокирует write-команды (rm, mkfs, dd, fork-бомбы и т.п.)
 - **Context Aggregator**: находит корреляции между компонентами
 - **Адаптеры**: Local subprocess, SSH (paramiko), Docker API
@@ -350,10 +360,12 @@ SecurityGuard обеспечивает:
 - **Блокировка опасных команд**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs и др.
 - **Ограничение размера вывода**: Обрезка больших результатов
 - **Ограничение логов**: Максимальное количество строк
-- **Валидация хостов**: `SecurityGuard.validate_host()` сверяет хост со списком
-  `allowed_hosts` (покрыт unit-тестами, но пока не встроен в пути вызовов плагинов —
-  см. TODO A3; как границу защиты не рассматривать)
-- **Валидация входных данных**: Pydantic схемы для всех входных данных инструментов
+- **Валидация хостов**: Linux, Nginx и Systemd проверяют явный `host` по
+  `security.allowed_hosts` до выбора адаптера. Проверяются имена реестра, не IP:
+  опишите имя в `hosts:` и включите его в allowlist. Пустой allowlist отключает
+  это ограничение. Это не универсальный сетевой ACL для API-клиентов и probe-целей.
+- **Валидация входных данных**: MCP-обработчики принимают словарь `params`;
+  поля проверяют отдельные инструменты, выделенных Pydantic-схем для каждого нет.
 
 ---
 
@@ -372,6 +384,5 @@ ContextAggregator анализирует состояния всех компо�
 ---
 
 ## License / Лицензия
-
-MIT
-
+В метаданных пакета заявлена MIT. Отдельный файл `LICENSE` пока отсутствует;
+текст лицензии и сведения о правообладателе остаются открытыми (TODO C1).

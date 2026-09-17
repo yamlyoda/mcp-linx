@@ -24,7 +24,16 @@
   «НЕ читается»: `environment.mode`/`debug`, `telemetry.log_level`. `env_prefix` не вводим.
   **Волна 3 закрыта** (A3/A4/A7/A9/A10/C4).
 - 2026-09-17 (волна 4 ✅): B1–B7, B9 (actions SHA + Dependabot), C3 (`py.typed`), C5 (project URLs). **204 unit passed, coverage 62.27%**, CI gate 60%; integration **5 passed, 2 skipped** (локально нет redis-cli; CI устанавливает redis-tools). Python matrix 3.11/3.12/3.13; 3.12/3.13 ещё не запускались локально. Ruff/format/mypy/bandit зелёные. Wheel/sdist содержат py.typed и URLs; Docker build + MCP stdio smoke OK. Runtime-код не менялся. Отказы rate-limit не аудируются — текущее поведение зафиксировано тестом.
-- Открыты: A8/E1–E4 (волна 5), D2/D3/C1-остаток (LICENSE/статус Alpha), Docker FROM digest; полный integration и Python 3.12/3.13 ждут CI.
+- 2026-09-17 (волна 5, A8 ✅): `SSHAdapter` — тонкая обёртка над `SSHConnectionPool` (свой пул на адаптер)
+  + `exec_command_sync`; удалены `_connect_sync`/`_execute_command_sync`/`assert` (nosec B101). Унаследованы
+  connect_timeout=10 и keepalive=30s, переиспользование и reconnect соединений. `ping()` по returncode.
+  Тесты: `test_ssh_policy.py` +6 unit (исправление прежнего +11: сравнивались unit и full; fake получил `get_transport`/`exec_command`; connect_kwargs теперь с `timeout: 10`).
+- 2026-09-17 (docs, D2/D3 ✅): исправлены README EN/RU, DEVELOPMENT, SECURITY,
+  .env.example и containers skill; в §5 закреплено обязательное обновление docs
+  вместе с кодом. Поправка A8: +6 unit, не +11 (смешивались unit и full).
+  Прогон `pytest tests/ -q`: 215 passed, 2 skipped (терминальный wrapper сообщил
+  ошибку завершения; итог pytest сохранён в логе). Runtime-код в этой задаче не менялся.
+- Открыты: E1/E2 (+E3/E4/E5), C1-остаток (LICENSE/статус Alpha), Docker FROM digest; полный integration и Python 3.12/3.13 ждут CI.
 
 ## 1. Карта репо
 
@@ -34,7 +43,7 @@ src/mcp_linx/
 ├── __main__.py             # python -m mcp_linx (A1)
 ├── __init__.py             # from mcp_linx.main import main (затеняет submodule — в тестах брать модуль через importlib)
 ├── multihost.py            # HostRegistry, именованные SSH-цели
-├── security.py             # SecurityGuard (validate_command; validate_host НЕ вызывается — см. A3)
+├── security.py             # SecurityGuard (validate_command; validate_host в linux/nginx/systemd)
 ├── audit.py / ratelimit.py / types.py / context_aggregator.py
 ├── adapters/               # base.py, ssh.py (paramiko), ssh_pool.py, docker.py
 ├── plugins/                # base.py + 10 плагинов: linux nginx docker postgres
@@ -42,7 +51,7 @@ src/mcp_linx/
 │                           #   каждый: __init__.py + tools.py
 └── harness/                # agent_loop.py context.py sandbox.py plugin_manager.py
 config/settings.yaml        # дефолтный конфиг (CONFIG_PATH переопределяет)
-tests/unit/ (conftest.make_plugin — общий хелпер моков) + integration/   # unit: 114 passed, 2 skipped; integration требует Docker
+tests/unit/ (conftest.make_plugin — общий хелпер моков) + integration/   # integration требует Docker
 ```
 
 `src/` — ~7.4k строк / 37 файлов. Самый большой: `context_aggregator.py` (433).
@@ -55,7 +64,7 @@ tests/unit/ (conftest.make_plugin — общий хелпер моков) + inte
 ## 2. Команды (venv проекта; глобальный python НЕ использовать)
 
 ```bash
-.venv/bin/python -m pytest -q          # гейт тестов (ожидается 114 passed, 2 skipped)
+.venv/bin/python -m pytest -q          # полный набор; результат фиксировать с датой и областью
 .venv/bin/ruff check src tests         # линтер (line-length 100, правила: E F I N W UP B C4 SIM)
 .venv/bin/ruff format --check src tests
 .venv/bin/python -m mypy src/mcp_linx  # strict=true
@@ -113,6 +122,21 @@ trivy image mcp-linx:ci --format json --severity HIGH,CRITICAL --ignore-unfixed 
 - Валидация ОДИН раз в конце: `pytest -q | tail -3`, `git diff --stat`,
   плюс профильные гейты (ruff/mypy/bandit — если трогался `src/`).
 - Артефакты сессии: обновить `TODO.md` (пункт A–G) — без переписывания истории.
+- **Код и документация меняются в одной задаче.** Перед правкой кода определить,
+  какие инструкции, примеры, конфиги и описания поведения она затрагивает.
+  До завершения обновить соответствующие разделы README (EN и RU), профильные
+  `docs/`, `SECURITY.md`, `.env.example` и комментарии конфигурации — по применимости.
+  Проверять не только новые возможности, но и удалённые API, дефолты, ограничения,
+  команды запуска/тестов и изменения безопасности. Запись в TODO не заменяет docs.
+- **Документация — часть приёмки:** сверить примеры с фактическим API/конфигом,
+  выполнить доступные команды или безопасные probes, проверить ссылки и diff.
+  Результаты тестов указывать с командой и областью (unit/integration/full),
+  не переносить старые счётчики в текущие инструкции. Исторические результаты
+  сохранять с датой; ошибочные записи явно исправлять. Волну не закрывать,
+  пока остаются открытые пункты её объёма.
+- Если изменение не требует документации (например, внутренний рефакторинг без
+  изменения контракта), явно указать это и обоснование в итоговом отчёте/PR.
+  Без обновления затронутой документации или такого обоснования задача не завершена.
 - Вызов инструментов: команды — ТОЛЬКО `run_commands` (tool `shell` НЕ существует);
   `ask_question.options` — массив СТРОК, не объектов.
 - Ответ пользователю: что изменено (файлы), как проверено (команда + результат),

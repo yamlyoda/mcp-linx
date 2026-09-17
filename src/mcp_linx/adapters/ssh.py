@@ -9,6 +9,7 @@ from typing import Any
 import paramiko
 
 from mcp_linx.adapters.base import BaseAdapter
+from mcp_linx.adapters.ssh_pool import SSHConnectionPool, exec_command_sync
 
 
 class SSHAdapter(BaseAdapter):
@@ -17,103 +18,31 @@ class SSHAdapter(BaseAdapter):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self._client: paramiko.SSHClient | None = None
-        self._host: str | None = None
-        self._port: int = 22
-        self._username: str | None = None
-        self._key_file: str | None = None
-        self._password: str | None = None
+        # Собственный пул: disconnect одного плагина не затрагивает другие.
+        self._pool = SSHConnectionPool()
 
     async def connect(self) -> None:
-        """Установить SSH-соединение"""
-        loop = asyncio.get_event_loop()
-
-        self._client = paramiko.SSHClient()
-
-        # Host key policy из конфига (дефолт: reject — защита от MITM).
-        # Допустимые значения: reject | warning | auto_add
-        policy = str(self.config.get("host_key_policy", "reject")).lower()
-        if policy == "auto_add":
-            # opt-in через конфиг; осознанно ослабленная проверка, дефолт — reject (anti-MITM)
-            self._client.set_missing_host_key_policy(
-                paramiko.AutoAddPolicy()  # nosec B507
-            )
-        elif policy == "warning":
-            # opt-in через конфиг; предупреждение, но подключает
-            self._client.set_missing_host_key_policy(
-                paramiko.WarningPolicy()  # nosec B507
-            )
-        else:
-            self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
-
-        # Загрузка known_hosts для проверки ключей хоста
-        try:
-            known_hosts = self.config.get("known_hosts")
-            if known_hosts:
-                self._client.load_host_keys(str(known_hosts))
-            else:
-                self._client.load_system_host_keys()
-        except Exception:
-            # Отсутствие known_hosts не блокирует подключение,
-            # но RejectPolicy отклонит неизвестный хост.
-            pass  # known_hosts опциональны  # nosec B110
-
-        await loop.run_in_executor(
-            None,
-            self._connect_sync,
-        )
-
-    def _connect_sync(self) -> None:
-        """Синхронное подключение (run в executor)"""
-        config = self.config
-        self._host = config.get("host", "localhost")
-        self._port = int(config.get("port", 22))
-        self._username = config.get("username") or None
-        self._key_file = config.get("key_file") or None
-        self._password = config.get("password") or None
-
-        connect_kwargs: dict[str, Any] = {
-            "hostname": self._host,
-            "port": self._port,
-        }
-
-        if self._username:
-            connect_kwargs["username"] = self._username
-
-        if self._key_file:
-            connect_kwargs["key_filename"] = self._key_file
-        elif self._password:
-            connect_kwargs["password"] = self._password
-
-        client = self._client
-        if client is None:
-            raise RuntimeError("SSH client not initialized")
-        client.connect(**connect_kwargs)
+        """Получить живое соединение через общий SSH-код (в executor)."""
+        loop = asyncio.get_running_loop()
+        self._client = await loop.run_in_executor(None, self._pool.get, self.config)
 
     async def disconnect(self) -> None:
         """Закрыть SSH-соединение"""
-        if self._client:
-            self._client.close()
-            self._client = None
+        await asyncio.get_running_loop().run_in_executor(None, self._pool.close_all)
+        self._client = None
 
     async def _ensure_client(self) -> paramiko.SSHClient:
         """Гарантировать подключение и вернуть клиент (не-Optional)."""
+        await self.connect()  # пул проверяет transport и заменяет мёртвое соединение
         if self._client is None:
-            await self.connect()
-        # Инвариант: connect() обязан создать клиент. При python -O assert исчезнет —
-        # тогда AttributeError перехватывается вызывающим кодом как обычная ошибка.
-        assert self._client is not None  # nosec B101
+            raise RuntimeError("SSH client not initialized")
         return self._client
 
     async def ping(self) -> bool:
         """Проверка SSH-доступности"""
-        client = await self._ensure_client()
         try:
-            # Статическая команда без пользовательского ввода
-            stdin, stdout, stderr = client.exec_command(
-                "echo OK",
-                timeout=5,  # nosec B601
-            )
-            return bool(stdout.read().decode().strip() == "OK")
+            result = await self.execute_command("echo OK", timeout=5)
+            return bool(result["returncode"] == 0 and result["stdout"].strip() == "OK")
         except Exception:
             return False
 
@@ -131,35 +60,9 @@ class SSHAdapter(BaseAdapter):
         Returns:
             dict с stdout, stderr, returncode
         """
-        await self._ensure_client()
-
+        client = await self._ensure_client()
         loop = asyncio.get_event_loop()
-
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._execute_command_sync(command, timeout),
-        )
-
-        return result
-
-    def _execute_command_sync(self, command: str, timeout: int) -> dict[str, Any]:
-        """Синхронное выполнение команды"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-
-        stdin, stdout, stderr = self._client.exec_command(
-            command,  # команда прошла SecurityGuard.validate_command (allowlist + readonly)  # nosec B601
-            timeout=timeout,
-        )
-
-        exit_status = stdout.channel.recv_exit_status()
-
-        return {
-            "stdout": stdout.read().decode("utf-8", errors="replace"),
-            "stderr": stderr.read().decode("utf-8", errors="replace"),
-            "returncode": exit_status,
-            "command": command,
-        }
+        return await loop.run_in_executor(None, exec_command_sync, client, command, timeout)
 
     async def execute_and_parse(
         self,

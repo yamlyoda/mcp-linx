@@ -22,11 +22,11 @@ pip install -e ".[dev]"
 ```
 mcp-linx/
 ├── config/settings.yaml
+├── REMOTE_TROUBLESHOOTING.md
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── DEVELOPMENT.md
 │   ├── SKILLS.md
-│   ├── REMOTE_TROUBLESHOOTING.md
 │   ├── INCIDENT_504.md
 │   └── skills/            # topic-split skills (per incident)
 ├── src/mcp_linx/
@@ -63,6 +63,73 @@ python -m mcp_linx.main
 npx @modelcontextprotocol/inspector python -m mcp_linx.main
 ```
 
+## Environment and configuration
+
+Copy `.env.example` to `.env` in the working directory. Only these five server
+settings belong in `.env`; process environment values take precedence:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MCP_SERVER_NAME` | `mcp-linx` | MCP server name |
+| `MCP_SERVER_VERSION` | `1.0.0` | Advertised version |
+| `CONFIG_PATH` | `config/settings.yaml` | YAML configuration path |
+| `LOG_LEVEL` | `INFO` | stderr logging level |
+| `AGENT_LOOP` | `default` | `default` or `streaming` |
+
+There is no `LINX_` prefix. `PLUGINS` is not a setting: plugin selection uses
+`plugins.enabled` in YAML (absent or empty means all discovered plugins).
+Unknown keys in `.env`, including plugin secrets and `SSH_KEY_DIR`, cause
+`Settings` validation errors. Unknown process environment variables are ignored
+by `Settings` but remain available to other consumers.
+
+### Plugin secrets
+
+`load_config()` substitutes `${VAR}` and `${VAR:-default}` from **`os.environ`**.
+Reading `.env` through `Settings` does not export its values to that environment.
+Supply `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, and `LOKI_TOKEN`
+through the launching process or a secret manager, not through the server `.env`.
+For example, in Bash (the secret is entered interactively, not in shell history):
+
+```bash
+read -r -s -p 'PostgreSQL password: ' POSTGRES_PASSWORD; printf '\n'
+export POSTGRES_PASSWORD
+.venv/bin/python -m mcp_linx
+unset POSTGRES_PASSWORD
+```
+
+The corresponding YAML must contain `password: "${POSTGRES_PASSWORD}"`, not
+`password: ""`. Defaults apply only to absent variables, not empty strings.
+Missing variables without defaults produce a warning and cause the **entire YAML**
+to be parsed without substitution. Expansion happens before YAML parsing, without
+escaping: values must be valid in their YAML quoting context. Do not treat this
+mechanism as fail-fast secret validation.
+
+Docker does not automatically receive the host environment or the server `.env`.
+After supplying secrets to the host process environment, forward the required
+variables explicitly, for example:
+
+```bash
+docker compose run --rm -e POSTGRES_PASSWORD -e REDIS_PASSWORD -e PROMETHEUS_TOKEN -e LOKI_TOKEN mcp-linx
+```
+
+For `docker run`, likewise use `-e VARIABLE` for each required setting or secret.
+Compose's `.env` interpolation is separate from Python's `.env` loading; the current
+compose file forwards only `CONFIG_PATH` by default. Set `SSH_KEY_DIR` in the shell
+for the SSH mount; do not add it to a `.env` also used by a local Python launch.
+
+### Audit and shutdown
+
+YAML `telemetry.audit_log` enables the audit logger. Its default destination is
+`/var/log/mcp-linx/audit.log`, which is not writable in the default non-root image.
+Set `telemetry.audit_log_file` to a writable path (and mount a writable directory
+for persistence). File setup errors produce a stderr warning; they do not stop
+the server. Rate-limit rejections currently are not recorded in the audit log.
+
+On platforms supporting asyncio signal handlers, SIGTERM/SIGINT (including
+`docker stop`) request shutdown: the server task is cancelled and its cleanup
+closes plugin resources and the multi-host SSH pool. Windows signal handling is
+limited; allow sufficient container stop time for cleanup.
+
 ## Testing
 
 ```bash
@@ -81,15 +148,15 @@ pytest tests/ --cov=src/mcp_linx --cov-report=html
 ### 1. Create Directory Structure
 
 ```bash
-mkdir -p plugins/my_plugin
-touch plugins/my_plugin/__init__.py
-touch plugins/my_plugin/tools.py
+mkdir -p src/mcp_linx/plugins/my_plugin
+touch src/mcp_linx/plugins/my_plugin/__init__.py
+touch src/mcp_linx/plugins/my_plugin/tools.py
 ```
 
 ### 2. Implement Plugin Class
 
 ```python
-# plugins/my_plugin/__init__.py
+# src/mcp_linx/plugins/my_plugin/__init__.py
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 
@@ -120,7 +187,7 @@ class MyPlugin(DiagnosticPlugin):
 ### 3. Implement Tool Functions
 
 ```python
-# plugins/my_plugin/tools.py
+# src/mcp_linx/plugins/my_plugin/tools.py
 from typing import Any
 from mcp_linx.plugins.my_plugin import MyPlugin
 from mcp_linx.types import ToolResult
@@ -135,7 +202,8 @@ async def my_tool(plugin: MyPlugin, params: dict[str, Any]) -> ToolResult:
 
 ### 4. Auto-Discovery
 
-Plugin is auto-discovered on startup. No registration needed!
+Plugin is auto-discovered on startup. Add `my_plugin` to `plugins.enabled` in YAML
+to enable it alongside the existing plugins. No manual class registration is needed.
 
 ## Creating a New Adapter
 
@@ -181,9 +249,9 @@ loops = {
 
 ## Debugging
 
-```yaml
-# Enable debug logging
-log_level: "DEBUG"
+```bash
+# Enable debug logging (YAML log_level does not configure logging)
+LOG_LEVEL=DEBUG .venv/bin/python -m mcp_linx
 ```
 
 ```bash
@@ -195,7 +263,9 @@ npx @modelcontextprotocol/inspector python -m mcp_linx.main
 
 1. Fork repository
 2. Create feature branch
-3. Make changes
-4. Add tests
-5. Run tests: `pytest tests/ -v`
-6. Submit pull request
+3. Make changes and update affected documentation in the same PR (README EN/RU,
+   configuration examples, development/security guides as applicable). Follow
+   [AGENTS.md](../AGENTS.md); if no documentation change is needed, explain why.
+4. Add tests and validate documented examples against the actual API/configuration
+5. Run tests: `pytest tests/ -v`; report unit/integration results separately
+6. Submit pull request with documentation updates (or a justified no-docs-impact note)

@@ -65,9 +65,10 @@
   - Стало (объём выбран пользователем — удаление): секция `logging:` **удалена** из `settings.yaml` (на её месте NOTE-указатель), `structlog>=24.0.0` **убран** из `pyproject.toml` (образ худее; в локальном venv пакет остаётся транзитивным — код его не импортирует). Проверено: `yaml.safe_load` → ключа `logging` нет, `import mcp_linx.main` работает.
   - Осталось осознанно (резервы, помечены inline-NOTE «A7: НЕ читается»): `environment.mode`/`debug` (`settings.yaml:7-9`) и `telemetry.log_level` (`settings.yaml:52`). Живые ключи секции — `telemetry.audit_log` / `audit_log_file` (`audit.py:74-80`) — не тронуты.
 
-- [ ] **A8 (P1). Дублирование SSH-логики: `SSHAdapter` vs `SSHConnectionPool`.**
+- [x] **A8 (P1, FIXED 2026-09-17. `SSHAdapter` — тонкая обёртка над `SSHConnectionPool` + `exec_command_sync`, +6 unit-тестов; прежний +11 был ошибкой сравнения unit/full). Дублирование SSH-логики: `SSHAdapter` vs `SSHConnectionPool`.**
   - `SSHAdapter` — копия host-key policy / known_hosts / connect / exec, но **без** `connect_timeout` и без `set_keepalive` (в пуле оба есть) и без переиспользования соединений. Два код-пути → расхождение поведения.
-  - Fix: `SSHAdapter` как тонкая обёртка над `SSHConnectionPool` + `exec_command_sync` (единый код-путь). Effort: ~2 ч.
+  - Стало: `SSHAdapter.connect()` = `pool.get(config)` (единый код-путь: policy/known_hosts/connect_kwargs/timeout=10/keepalive 30s в `ssh_pool._connect`); `execute_command` = `exec_command_sync` из `ssh_pool`; `ping()` = `execute_command("echo OK", 5)` по returncode (как в `RemoteHostAdapter`); `disconnect()` = `pool.close_all()` (свой пул на адаптер — изоляция плагинов); удалены `_connect_sync`/`_execute_command_sync` и мёртвый `assert` (nosec B101). Бонус: унаследованы `connect_timeout` и `set_keepalive`, которых у старого `SSHAdapter` не было.
+  - Тесты: `tests/unit/test_ssh_policy.py` (+6 unit, исправлено с +11): reuse/connect_timeout=10/keepalive(30)/reconnect мёртвого, изоляция `disconnect`, ping по exit-code, ошибки соединения, `execute_and_parse`. Полный набор: **215 passed, 2 skipped**; ruff/format/mypy/bandit зелёные.
 
 - [x] **A9 (P2, FIXED 2026-09-17. `apply_timeout` удалён, rate-limit ✅; wire-up `command_timeout_seconds` в дефолты плагинов, +15 тестов). Заглушки и мёртвый/недоступный API.**
   - ✅ `SecurityGuard.apply_timeout()` **удалён** (2026-09-17): был заглушкой (`timeout = timeout or self._command_timeout; return func` — без обёртки), не вызывался нигде (0 ссылок в `src/`, `tests/`, docs). Таймауты реально применяются в `adapters/base.py:102` (`asyncio.wait_for`) и через paramiko `timeout=`.
@@ -126,12 +127,14 @@
 
 - [x] **D1 (FIXED 2026-09-16, docs). README обещал `allowed_hosts`-whitelist как границу защиты.**
   - README.md/README.ru.md переписаны: `validate_host()` не только unit-tested, но и встроен в пути вызовов (A3 ✅, 2026-09-16) — формулировка «whitelist» снова корректна, уточнить семантику (`hosts:` = доверенные таргеты, `allowed_hosts` = probe-цели).
-- [ ] **D2.** Добавить раздел про env-переменные (реальные имена полей `Settings`, см. A10) и `${VAR}` (A4), audit-лог и путь к нему (A6), корректное завершение по SIGTERM / `docker stop` (A2). Сейчас в `docs/DEVELOPMENT.md` про env **нет ничего**.
-- [ ] **D3.** README Configuration: убрать секцию `logging:` (A7 — мертва, NOTE в `settings.yaml`) и уточнить `tunnel_host` (A5 ✅ — ключей в README и не было); задокументировать `rate_limit_*` (A9 ✅ — описаны в `settings.yaml`, в README нет) и `${VAR}` (A4 ✅).
+- [x] **D2 (FIXED 2026-09-17, docs).** В DEVELOPMENT добавлены пять env-полей Settings, приоритет окружения, ограничения `.env`, `${VAR}` и fail-open/YAML quoting, передача секретов Docker, audit-путь и SIGTERM/`docker stop`.
+- [x] **D3 (FIXED 2026-09-17, docs).** README EN/RU: рабочие `${VAR:-}` для паролей, rate-limit и allowed_hosts, фактическая валидация params/host, dry-run prune, актуальные пути и отсутствие LICENSE. Секция logging не предлагается; DEBUG задаётся через LOG_LEVEL. SECURITY и .env.example согласованы с A4.
 - [x] **D4 (FIXED 2026-09-16, docs). REMOTE_TROUBLESHOOTING #6 помечен TODO при частичной реализации.**
   - Раздел #6 → 🟡 PARTIAL (keepalive + dead-reconnect done, retry/metrics → E1); таблица приоритетов и Quick Wins обновлены.
 - [x] **D5 (FIXED 2026-09-16, docs). SECURITY.md аттестовал секреты «from config/env».**
-  - Три места исправлены на правду: секреты — plaintext в `settings.yaml`, `${VAR}` не реализован (→ A4).
+  - Статус на 2026-09-17: `${VAR}` / `${VAR:-default}` реализованы (A4).
+    SECURITY.md синхронизирован с фактической подстановкой из окружения процесса;
+    `.env` сервера не предназначен для секретов плагинов.
 
 <a name="E"></a>
 ### E. Роадмап фич (remote/SSH)
@@ -153,7 +156,7 @@
 - 🟡 6 (тесты плагинов) — частично; непокрытые области вынесены в B1/B2.
 - 🟡 11 (больше примеров в README) — частично (примеры multi-host/hosts добавлены).
 - ⬜ 7 (документировать SSL mode) — значения перечислены только в `settings.yaml` (комментарий) и README-примере; отдельного раздела «SSL mode» нет.
-- ⬜ 8 (clarify docker prune) — README (EN+RU) и `docs/skills/containers.md` говорят «Remove stopped containers», тогда как фактическая семантика — dry-run + явный `confirm` (`plugins/docker/__init__.py:89`); уточнить формулировки и поведение.
+- ✅ 8 (clarify docker prune, 2026-09-17) — README EN/RU и `docs/skills/containers.md`: dry-run по умолчанию, удаление только при `execute=true` и `confirm=true`.
 - ❌ 13 (аутентификация/авторизация) — отсутствует полностью: в коде нет ни API-key, ни токенов (строка `api_key` встречается только в списке ключей для редакции аудита, `audit.py:23`).
 
 <a name="G"></a>
@@ -163,7 +166,7 @@
 - [x] **Волна 2 — быстрые баги (2026-09-16):** A1 ✅, A2 ✅, A5 ✅, A6 ✅ (гейт 114 → 120 passed).
 - [x] **Волна 3 — секьюрити-контур (✅ 2026-09-17, закрыта):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста), A9 ✅ (`apply_timeout` удалён; rate-limit ✅; `command_timeout_seconds` проведён в дефолты плагинов, +15 тестов), C4 ✅ (`.env.example` + указатель в README), A7 ✅ (секция `logging:` + `structlog` удалены), A10 ✅ (`Settings.plugins` удалено) — остаток env-доков: D2.
 - [x] **Волна 4 — качество (2026-09-17):** B1–B7, B9 (actions), C2, C3, C5. Unit: 204 passed, coverage 62.27%; integration: 5 passed / 2 skipped (локально нет redis-cli). Ruff/mypy/bandit зелёные; wheel/sdist, Docker build и MCP smoke — OK. Матрица 3.12/3.13 и полный integration — ожидают CI.
-- [ ] **Волна 5 — рефакторинг и фичи:** A8, E1, E2.
+- [ ] **Волна 5 — рефакторинг и фичи:** A8 ✅ (2026-09-17, +6 unit-тестов: 204 → 210; полный набор 215 passed / 2 skipped включает 5 integration); E1, E2 — открыты. Исправлен прежний ошибочный прирост +11 и преждевременное закрытие волны.
 
 После каждой волны прогонять гейты: `ruff check`, `ruff format --check`, `mypy`, `bandit`, `pytest`, валидация YAML, баланс code-fence в `*.md`.
 
