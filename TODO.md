@@ -40,16 +40,18 @@
   - Было: `plugin_manager_ref` никогда не заполнялся, а `add_signal_handler` переопределял дефолтное завершение → `docker stop` висел 10 с до SIGKILL.
   - Стало: `_main_async()` ставит `stop_event` по сигналу и отменяет `server_task`; cleanup (`destroy_all` + `close_all`) выполняется в `finally` через `agent_loop.shutdown()`. Тест: `test_sigterm_triggers_shutdown` (эмуляция хендлера → задача отменена).
 
-- [ ] **A3 (P1). `allowed_hosts` — защита заявлена, но не работает; включение сломает multi-host.**
-  - README (EN+RU, Security) обещает «Host validation: whitelist of allowed_hosts»; фактически `SecurityGuard.validate_host()` (`security.py:179`) **не вызывается в `src/`** — только из `tests/unit/test_security.py`.
-  - Дефолты расходятся: `security.py` → `["localhost"]`; 6 плагинов → `["localhost","127.0.0.1"]`; `settings.yaml` → 2 записи.
-  - Если включить «как есть» — сломается multi-host: `web-1` / `10.130.0.23` не в whitelist.
-  - Развилка: (a) удалить метод и убрать обещание из README/SECURITY.md, либо (b) реализовать с моделью «`hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели» и вызывать при валидации входных параметров. Effort: 1–3 ч.
+- [x] **A3 (P1, FIXED 2026-09-16, вариант b — wire-up). `allowed_hosts` — защита заявлена и теперь работает.**
+  - Было: `SecurityGuard.validate_host()` (`security.py`) не вызывался в `src/` (только из тестов); README обещал whitelist как границу защиты.
+  - Стало: вызов добавлен в `_run_command`/`_run` **всех 3 плагинов с параметром `host`** (`linux/__init__.py:121`, `nginx/__init__.py:104`, `systemd/__init__.py:97`) — проверка идёт до `_resolve_adapter`, т.е. до обращения к сети.
+  - Семантика зафиксирована в `settings.yaml:37-42`: `hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели; пустой `[]` = без ограничений (свободный multi-host).
+  - Тесты: `test_entrypoint.py::TestAllowedHosts` — хост вне whitelist блокируется до резолва адаптера; пустой whitelist пропускает.
 
-- [ ] **A4 (P0). Секреты из env не реализованы, хотя обещано — в том числе в security-отчёте.**
+- [x] **A4 (P0, FIXED 2026-09-16). `${VAR}`-подстановка в YAML реализована — секреты не обязательно держать plaintext.**
   - Env читается только через `pydantic_settings.BaseSettings` для настроек сервера (`main.py:29-37`) и **не покрывает** креды плагинов: подстановки `${VAR}` в YAML нет, `os.environ`/`getenv` в коде — **0** вхождений. Секрет задаётся только plaintext в `config/settings.yaml`.
   - Обещано в: `settings.yaml` (`# из env: POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN`), `docker-compose.yml` (`# LINX_SSH_PASSWORD: ${LINX_SSH_PASSWORD}` — код эту переменную не читает, см. A10), README (`password: null  # prefer env / key auth`), **`SECURITY.md:187/249`** («No hardcoded secrets — Passwords from config/env», «`config/settings.yaml` | ✅ Clean | Passwords from env»).
-  - Fix: раскрытие `${VAR}` / `${VAR:-default}` при загрузке конфига + тесты (нет переменной / default / кавычки), синхронизировать доки. Effort: ~2 ч.
+  - Стало: `main.py::_expand_env_vars` + `load_config` раскрывают `${VAR}` / `${VAR:-default}` при загрузке YAML; отсутствие переменной без default → fail-open в raw-значение + WARNING (загрузка не падает).
+  - Тесты: `test_entrypoint.py::TestEnvSubstitution` (4) — env-подстановка, default при отсутствии, fail-open с warning, реальный `config/settings.yaml` грузится без env.
+  - Доки синхронизированы: `SECURITY.md` (D5), комментарии в `settings.yaml`. Остаток: `.env.example` — C4.
 
 - [x] **A5 (P2, FIXED 2026-09-16, docs). `postgres.ssh.tunnel_host` / `tunnel_port` — ключи-заглушки.**
   - Удалены из `settings.yaml`, добавлен NOTE со ссылкой на E2; PG/Redis ходят напрямую, задавать их бессмысленно.
@@ -58,23 +60,26 @@
 - [x] **A6 (P1, FIXED 2026-09-16, docs). Дефолтный audit-лог неписуем в контейнере.**
   - Код (`AuditLogger.log_call`) уже деградирует в stderr-warn; дефолт менять не стали (хост-запускам путь подходит); в `settings.yaml` добавлен комментарий: смонтировать том либо задать свой путь.
 
-- [ ] **A7 (P2). Секция `logging:` в `settings.yaml` мертва; `structlog` не используется.**
+- [ ] **A7 (P2, 🟡 docs-only NOTE 2026-09-16). Секция `logging:` в `settings.yaml` мертва; `structlog` не используется.**
   - Нет `logging.config.dictConfig`; `structlog` импортируется **0** раз, но стоит в `dependencies`; `environment.mode`/`debug` не читаются, `telemetry.log_level` — тоже. Единственное чтение уровня: `main.py:44-45` из `Settings.log_level` (env `LOG_LEVEL`) + `basicConfig`. Т.е. мертвы: секция `logging:`, `telemetry.log_level`, `environment.mode`/`debug`.
   - Fix: применить `dictConfig(config["logging"])` **или** удалить секцию и зависимость (уменьшит образ). Effort: 1–2 ч.
+  - NB (2026-09-16): в `settings.yaml:169-171` добавлен NOTE (секция зарезервирована под `dictConfig`); код по-прежнему её не читает.
 
 - [ ] **A8 (P1). Дублирование SSH-логики: `SSHAdapter` vs `SSHConnectionPool`.**
   - `SSHAdapter` — копия host-key policy / known_hosts / connect / exec, но **без** `connect_timeout` и без `set_keepalive` (в пуле оба есть) и без переиспользования соединений. Два код-пути → расхождение поведения.
   - Fix: `SSHAdapter` как тонкая обёртка над `SSHConnectionPool` + `exec_command_sync` (единый код-путь). Effort: ~2 ч.
 
-- [ ] **A9 (P2). Заглушки и мёртвый/недоступный API.**
+- [ ] **A9 (P2, 🟡 частично: rate-limit ✅ 2026-09-16). Заглушки и мёртвый/недоступный API.**
   - `SecurityGuard.apply_timeout()` возвращает `func` без изменений и не используется.
   - `# nosec B601` в `SSHAdapter.ping()` (`adapters/ssh.py:114`) стоит на `timeout=5`, а не на `exec_command` (корректные аннотации — `ssh.py:151`, `ssh_pool.py:116`) → аннотация на строке 114 бессмысленна.
-  - `rate_limit_max_calls` / `rate_limit_window_seconds`: отсутствуют в `settings.yaml` и не упомянуты в README/docs → лимит 60/60 фактически зашит. Effort: ~1 ч.
+  - NB (2026-09-16, подтверждено `bandit -c pyproject.toml -r src/mcp_linx -q`): 4 WARNING «nosec encountered (B507), but no failed test» — `ssh.py:38`, `ssh.py:43`, `ssh_pool.py:66`, `ssh_pool.py:71`; при этом bandit = **0 issues** (все severity), т.е. аннотации `# nosec B507` избыточны — их (и `B601` на `timeout=5`) следует удалить.
+  - `rate_limit_max_calls` / `rate_limit_window_seconds` ✅ (2026-09-16): задокументированы в `settings.yaml:33-36`; реализация жива (`ratelimit.py` → `agent_loop._make_handler`). Остаются: `apply_timeout()` (мёртв) и бессмысленный `# nosec B601`. Effort: ~1 ч.
 
-- [ ] **A10 (P2). Объявленные env-переменные и настройки не подключены.**
+- [ ] **A10 (P2, 🟡 docs-only NOTE 2026-09-16). Объявленные env-переменные и настройки не подключены.**
   - `Settings.plugins` (env `PLUGINS`, дефолт `"linux,nginx,docker,postgres"`) **не используется нигде** — состав плагинов определяет только `config/settings.yaml::plugins.enabled` через `PluginManager.load_plugins()`. Настройка вводит в заблуждение (и не соответствует факту 10 плагинов).
   - У `Settings` нет `env_prefix`, поэтому предложенные в `docker-compose.yml` имена `LINX_LOG_LEVEL` / `LINX_SSH_PASSWORD` **не будут прочитаны**: pydantic-settings ждёт `LOG_LEVEL`, `CONFIG_PATH`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `AGENT_LOOP`.
   - Fix: либо `env_prefix="LINX_"` и приведение имён, либо правка имён в compose/README к фактическим полям. Effort: ~1 ч.
+  - NB (2026-09-16, docs-only): `docker-compose.yml` переписан на фактические имена (`CONFIG_PATH`, `MCP_SERVER_NAME`, `LOG_LEVEL`), `LINX_*` помечены как НЕ маппящиеся без `env_prefix`; `main.py:32` annotate. `Settings.plugins` по-прежнему не используется.
 
 <a name="B"></a>
 ### B. Тесты и CI
@@ -106,7 +111,7 @@
 - [x] **C2. `CHANGELOG.md` создан (FIXED 2026-09-15)** — исторические фазовые логи + вехи перенесены туда; `TODO.md` сокращён до живого бэклога + TOC.
 - [ ] **C3. Нет `py.typed`** (PEP 561) при mypy strict и типизированном публичном API.
 - [ ] **C4. Нет `.env.example`**, хотя `pydantic-settings` читает `.env` (`main.py:31`, `env_file=".env"`) и `.gitignore` разрешает `!.env.example`. Задокументировать фактически поддерживаемые имена: `CONFIG_PATH`, `LOG_LEVEL`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `AGENT_LOOP` (+ `PLUGINS`, если починить — A10); связано с A4.
-- [ ] **C5. Метаданные-заглушки:** `authors = mcp-linx <mcp-linx@example.com>`; нет `[project.urls]` (Homepage/Repository/Issues).
+- [ ] **C5. Нет `[project.urls]`** (Homepage/Repository/Issues) в `pyproject.toml`. (authors-плейсхолдер снят — C1 ✅ 2026-09-16.)
 - [ ] **C6. `HARNESS_ANALYSIS.md` лежит в корне** — внутренний анализ, тогда как README ведёт список документации в `docs/`. Переместить или оставить осознанно.
 - [ ] **C7.** `diagnosis_state.md` — корректно в `.gitignore` («креды, kept local only»), **не трогать**.
 
@@ -114,9 +119,9 @@
 ### D. Документация (следует за фиксами кода)
 
 - [x] **D1 (FIXED 2026-09-16, docs). README обещал `allowed_hosts`-whitelist как границу защиты.**
-  - README.md/README.ru.md переписаны: `validate_host()` существует и unit-tested, но не встроен в пути вызовов (A3) — как enforcement не рассматривать. Сам A3 остаётся открытым (развилка wire-up vs убрать).
+  - README.md/README.ru.md переписаны: `validate_host()` не только unit-tested, но и встроен в пути вызовов (A3 ✅, 2026-09-16) — формулировка «whitelist» снова корректна, уточнить семантику (`hosts:` = доверенные таргеты, `allowed_hosts` = probe-цели).
 - [ ] **D2.** Добавить раздел про env-переменные (реальные имена полей `Settings`, см. A10) и `${VAR}` (A4), audit-лог и путь к нему (A6), корректное завершение по SIGTERM / `docker stop` (A2). Сейчас в `docs/DEVELOPMENT.md` про env **нет ничего**.
-- [ ] **D3.** README Configuration: пометить/убрать `tunnel_host` (A5 ✅ — ключи удалены из `settings.yaml`, в README их и не было) и секцию `logging:` (A7); задокументировать `rate_limit_*` (A9).
+- [ ] **D3.** README Configuration: убрать секцию `logging:` (A7 — мертва, NOTE в `settings.yaml`) и уточнить `tunnel_host` (A5 ✅ — ключей в README и не было); задокументировать `rate_limit_*` (A9 ✅ — описаны в `settings.yaml`, в README нет) и `${VAR}` (A4 ✅).
 - [x] **D4 (FIXED 2026-09-16, docs). REMOTE_TROUBLESHOOTING #6 помечен TODO при частичной реализации.**
   - Раздел #6 → 🟡 PARTIAL (keepalive + dead-reconnect done, retry/metrics → E1); таблица приоритетов и Quick Wins обновлены.
 - [x] **D5 (FIXED 2026-09-16, docs). SECURITY.md аттестовал секреты «from config/env».**
@@ -148,9 +153,9 @@
 <a name="G"></a>
 ### G. Предлагаемый порядок работ (волны)
 
-- [ ] **Волна 1 — правда в доках:** D1, D4, D5, C1 (доки и security-отчёт обещают несуществующее).
-- [ ] **Волна 2 — быстрые баги:** A1, A2, A6, A5.
-- [ ] **Волна 3 — секьюрити-контур:** A4 (+ C4), A3 (развилка a/b), A7, A9, A10.
+- [x] **Волна 1 — правда в доках (2026-09-16):** D1 ✅, D4 ✅, D5 ✅, C1 🟡 (authors ✅; LICENSE/`py.typed` открыты) — остаток D2/D3.
+- [x] **Волна 2 — быстрые баги (2026-09-16):** A1 ✅, A2 ✅, A5 ✅, A6 ✅ (гейт 114 → 120 passed).
+- [ ] **Волна 3 — секьюрити-контур (🟡 2026-09-16):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста) — закрыты; открыты C4 (`.env.example`), A7 (docs-NOTE), A9 (🟡 rate-limit ✅), A10 (🟡 только NOTE).
 - [ ] **Волна 4 — качество:** B1–B7, C2, C3, C5.
 - [ ] **Волна 5 — рефакторинг и фичи:** A8, E1, E2.
 

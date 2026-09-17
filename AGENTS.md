@@ -11,7 +11,11 @@
   тесты склеены 5→2 + `conftest.make_plugin`, README split 498→372+371,
   создан `AGENTS.md` + `docs/INDEX.md`. Гейт: **114 passed, 2 skipped**.
 - 2026-09-16 (волна 1): D1 ✅ / D4 ✅ / D5 ✅ (docs-only), C1 🟡 частично (authors; LICENSE/py.typed открыты).
-- Открыты: A3/A4/A7/A9/A10 (волна 3), B1/B2/B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C1-остаток (волна 1).
+- 2026-09-16 (волна 2, код): A1 ✅ / A2 ✅ (`_main_async` + `stop_event` + тест), A5 ✅ / A6 ✅ (docs-only).
+- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:37-42` + 2 теста).
+  A7 🟡 (docs-NOTE), A9 🟡 (rate-limit жив и задокументирован; `apply_timeout` мёртв), A10 🟡 (только NOTE в `main.py:32`/compose).
+- Гейт волны 3: **120 passed, 2 skipped**; `ruff check` / `ruff format --check` зелёные (попутно: newline в `__init__.py`, unused `os`, `SecurityError` из `mcp_linx.security`, `initialize({})`).
+- Открыты: A7/A9/A10-остаток (волна 3), B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C4/C1-остаток.
 
 ## 1. Карта репо
 

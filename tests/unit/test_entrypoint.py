@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
-import os
 import signal
 import textwrap
 
@@ -75,7 +74,6 @@ class TestEnvSubstitution:
         return str(p)
 
     def test_var_expands_from_env(self, tmp_path, monkeypatch):
-        import mcp_linx.main as _  # noqa: F401  (модуль ради сайд-эффекта не нужен)
         main_pkg = importlib.import_module("mcp_linx.main")
         monkeypatch.setenv("MCP_LINX_TEST_PW", "s3cret")
         path = self._write_cfg(
@@ -87,9 +85,7 @@ class TestEnvSubstitution:
     def test_default_used_when_missing(self, tmp_path, monkeypatch):
         main_pkg = importlib.import_module("mcp_linx.main")
         monkeypatch.delenv("MCP_LINX_TEST_MISSING", raising=False)
-        path = self._write_cfg(
-            tmp_path, 'token: "${MCP_LINX_TEST_MISSING:-fallback}"\n'
-        )
+        path = self._write_cfg(tmp_path, 'token: "${MCP_LINX_TEST_MISSING:-fallback}"\n')
         cfg = main_pkg.load_config(path)
         assert cfg["token"] == "fallback"
 
@@ -118,14 +114,12 @@ class TestAllowedHosts:
         from mcp_linx.plugins.linux import LinuxPlugin
 
         plugin = LinuxPlugin()
-        await plugin.initialize(
-            type("C", (), {"get": lambda self, k, d=None: {}})()  # type: ignore[arg-type]
-        )
+        # PluginConfig — обычный dict; дефолты (таймауты, размеры) берутся из .get()
+        await plugin.initialize({})
         # Подменяем security на whitelist без web-1
-        from mcp_linx.security import SecurityGuard
+        from mcp_linx.security import SecurityError, SecurityGuard
 
         plugin._security = SecurityGuard({"allowed_hosts": ["localhost"]})
-        from mcp_linx.types import SecurityError
 
         with pytest.raises(SecurityError, match="not in allowed_hosts"):
             await plugin._run_command("uptime", host="web-1")
@@ -135,9 +129,7 @@ class TestAllowedHosts:
         from mcp_linx.plugins.linux import LinuxPlugin
 
         plugin = LinuxPlugin()
-        await plugin.initialize(
-            type("C", (), {"get": lambda self, k, d=None: {}})()  # type: ignore[arg-type]
-        )
+        await plugin.initialize({})
         from mcp_linx.security import SecurityGuard
 
         plugin._security = SecurityGuard({"allowed_hosts": []})
