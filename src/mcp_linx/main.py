@@ -29,15 +29,16 @@ from mcp_linx.harness import (
 
 
 # Конфигурация через переменные окружения.
-# ВАЖНО (A10): без env_prefix имена вида LINX_* НЕ маппятся на эти поля.
-# Реальные имена: MCP_SERVER_NAME, CONFIG_PATH, LOG_LEVEL и т.д. (см. D2).
+# Фактические имена — БЕЗ префикса (MCP_SERVER_NAME, CONFIG_PATH, LOG_LEVEL, ...):
+# `LINX_*` сознательно не поддерживаются, см. `.env.example` и README.
+# A10 (FIXED 2026-09-17): поле `plugins` удалено — состав плагинов определяет
+# только `config/settings.yaml::plugins.enabled` (PluginManager.load_plugins()).
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     mcp_server_name: str = "mcp-linx"
     mcp_server_version: str = "1.0.0"
     config_path: str = "config/settings.yaml"
-    plugins: str = "linux,nginx,docker,postgres"
     log_level: str = "INFO"
     agent_loop: str = "default"  # default | streaming
 

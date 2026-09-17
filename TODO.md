@@ -43,15 +43,15 @@
 - [x] **A3 (P1, FIXED 2026-09-16, вариант b — wire-up). `allowed_hosts` — защита заявлена и теперь работает.**
   - Было: `SecurityGuard.validate_host()` (`security.py`) не вызывался в `src/` (только из тестов); README обещал whitelist как границу защиты.
   - Стало: вызов добавлен в `_run_command`/`_run` **всех 3 плагинов с параметром `host`** (`linux/__init__.py:121`, `nginx/__init__.py:104`, `systemd/__init__.py:97`) — проверка идёт до `_resolve_adapter`, т.е. до обращения к сети.
-  - Семантика зафиксирована в `settings.yaml:41-44`: `hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели; пустой `[]` = без ограничений (свободный multi-host).
+  - Семантика зафиксирована в `settings.yaml:44-47`: `hosts:` = доверенные SSH-таргеты, `allowed_hosts` = разрешённые probe-цели; пустой `[]` = без ограничений (свободный multi-host).
   - Тесты: `test_entrypoint.py::TestAllowedHosts` — хост вне whitelist блокируется до резолва адаптера; пустой whitelist пропускает.
 
 - [x] **A4 (P0, FIXED 2026-09-16). `${VAR}`-подстановка в YAML реализована — секреты не обязательно держать plaintext.**
-  - Env читается только через `pydantic_settings.BaseSettings` для настроек сервера (`main.py:29-37`) и **не покрывает** креды плагинов: подстановки `${VAR}` в YAML нет, `os.environ`/`getenv` в коде — **0** вхождений. Секрет задаётся только plaintext в `config/settings.yaml`.
+  - Env читается только через `pydantic_settings.BaseSettings` для настроек сервера (`main.py:31-43`) и **не покрывает** креды плагинов: подстановки `${VAR}` в YAML нет, `os.environ`/`getenv` в коде — **0** вхождений. Секрет задаётся только plaintext в `config/settings.yaml`.
   - Обещано в: `settings.yaml` (`# из env: POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN`), `docker-compose.yml` (`# LINX_SSH_PASSWORD: ${LINX_SSH_PASSWORD}` — код эту переменную не читает, см. A10), README (`password: null  # prefer env / key auth`), **`SECURITY.md:187/249`** («No hardcoded secrets — Passwords from config/env», «`config/settings.yaml` | ✅ Clean | Passwords from env»).
   - Стало: `main.py::_expand_env_vars` + `load_config` раскрывают `${VAR}` / `${VAR:-default}` при загрузке YAML; отсутствие переменной без default → fail-open в raw-значение + WARNING (загрузка не падает).
   - Тесты: `test_entrypoint.py::TestEnvSubstitution` (4) — env-подстановка, default при отсутствии, fail-open с warning, реальный `config/settings.yaml` грузится без env.
-  - Доки синхронизированы: `SECURITY.md` (D5), комментарии в `settings.yaml`. Остаток: `.env.example` — C4.
+  - Доки синхронизированы: `SECURITY.md` (D5), комментарии в `settings.yaml`. Остаток `.env.example` закрыт: C4 ✅ (2026-09-17).
 
 - [x] **A5 (P2, FIXED 2026-09-16, docs). `postgres.ssh.tunnel_host` / `tunnel_port` — ключи-заглушки.**
   - Удалены из `settings.yaml`, добавлен NOTE со ссылкой на E2; PG/Redis ходят напрямую, задавать их бессмысленно.
@@ -60,10 +60,10 @@
 - [x] **A6 (P1, FIXED 2026-09-16, docs). Дефолтный audit-лог неписуем в контейнере.**
   - Код (`AuditLogger.log_call`) уже деградирует в stderr-warn; дефолт менять не стали (хост-запускам путь подходит); в `settings.yaml` добавлен комментарий: смонтировать том либо задать свой путь.
 
-- [ ] **A7 (P2, 🟡 docs-only NOTE 2026-09-16). Секция `logging:` в `settings.yaml` мертва; `structlog` не используется.**
-  - Нет `logging.config.dictConfig`; `structlog` импортируется **0** раз, но стоит в `dependencies`; `environment.mode`/`debug` не читаются, `telemetry.log_level` — тоже. Единственное чтение уровня: `main.py:44-45` из `Settings.log_level` (env `LOG_LEVEL`) + `basicConfig`. Т.е. мертвы: секция `logging:`, `telemetry.log_level`, `environment.mode`/`debug`.
-  - Fix: применить `dictConfig(config["logging"])` **или** удалить секцию и зависимость (уменьшит образ). Effort: 1–2 ч.
-  - NB (2026-09-16): в `settings.yaml:173-175` добавлен NOTE (секция зарезервирована под `dictConfig`); код по-прежнему её не читает.
+- [x] **A7 (P2, FIXED 2026-09-17, выбранная опция — чистка). Секция `logging:` мертва; `structlog` не использовался.**
+  - Было: нет `logging.config.dictConfig`; `structlog` импортировался **0** раз, но стоял в `dependencies`; `environment.mode`/`debug` и `telemetry.log_level` код не читал. Единственное чтение уровня — `Settings.log_level` (env `LOG_LEVEL`) → `basicConfig` (`main.py:49-53`).
+  - Стало (объём выбран пользователем — удаление): секция `logging:` **удалена** из `settings.yaml` (на её месте NOTE-указатель), `structlog>=24.0.0` **убран** из `pyproject.toml` (образ худее; в локальном venv пакет остаётся транзитивным — код его не импортирует). Проверено: `yaml.safe_load` → ключа `logging` нет, `import mcp_linx.main` работает.
+  - Осталось осознанно (резервы, помечены inline-NOTE «A7: НЕ читается»): `environment.mode`/`debug` (`settings.yaml:7-9`) и `telemetry.log_level` (`settings.yaml:52`). Живые ключи секции — `telemetry.audit_log` / `audit_log_file` (`audit.py:74-80`) — не тронуты.
 
 - [ ] **A8 (P1). Дублирование SSH-логики: `SSHAdapter` vs `SSHConnectionPool`.**
   - `SSHAdapter` — копия host-key policy / known_hosts / connect / exec, но **без** `connect_timeout` и без `set_keepalive` (в пуле оба есть) и без переиспользования соединений. Два код-пути → расхождение поведения.
@@ -74,14 +74,14 @@
   - ❌ **Опровергнуто** (2026-09-17): прежний тезис «аннотации `# nosec` бессмысленны — удалить» **неверен**. Probe (копия файла без аннотаций → `bandit`): удаление `# nosec B507` (×4) даёт 4×High `B507` (`ssh.py:38/43`, `ssh_pool.py:66/71`), удаление `# nosec B601` на `ssh.py:114` — Medium `B601` (отчёт на строке 112, `ping()`), удаление `# nosec B110`/`B101` — тоже реальные находки. Все аннотации load-bearing ⇒ **ничего не удалять**; 4 WARNING «nosec encountered (B507), but no failed test» — ложное срабатывание эвристики bandit на multi-line вызовах.
   - 🔎 Новая находка (2026-09-17): после удаления `apply_timeout` атрибут `SecurityGuard._command_timeout` (`security.py:95`) нигде не читается → ключ `security.command_timeout_seconds` на таймауты НЕ влияет (они задаются per-tool в плагинах). РЕШЕНО (2026-09-17): ключ проведён в дефолты плагинов — см. следующий пункт.
   - [wire-up A9, 2026-09-17] `security.command_timeout_seconds` больше не мёртвый: `SecurityGuard.command_timeout` (property, `security.py:98`) → `DiagnosticPlugin.command_timeout` (`plugins/base.py:54`, raises RuntimeError без `initialize`) → в `_run*` шести плагинов (`linux`, `nginx`, `systemd`, `kubernetes`, `netdiag`, `redis`) `if timeout is None: timeout = self.command_timeout` перед `adapter.execute_command`. Явный per-tool timeout сохраняется и перекрывает конфиг.
-  - Тесты: `tests/unit/test_command_timeout.py` (+15) — 6 плагинов × [дефолт из конфига / override], tool-путь `linux_disk` (без явного timeout), дефолт guard = 30, RuntimeError без init. Docs: `settings.yaml:32-35`, README / README.ru / `docs/ARCHITECTURE.md` (инлайн-комментарий ключа).
-  - `rate_limit_max_calls` / `rate_limit_window_seconds` ✅ (2026-09-16): задокументированы в `settings.yaml:37-40`; реализация жива (`ratelimit.py` → `agent_loop._make_handler`).
+  - Тесты: `tests/unit/test_command_timeout.py` (+15) — 6 плагинов × [дефолт из конфига / override], tool-путь `linux_disk` (без явного timeout), дефолт guard = 30, RuntimeError без init. Docs: `settings.yaml:35-38`, README / README.ru / `docs/ARCHITECTURE.md` (инлайн-комментарий ключа).
+  - `rate_limit_max_calls` / `rate_limit_window_seconds` ✅ (2026-09-16): задокументированы в `settings.yaml:42-43`; реализация жива (`ratelimit.py` → `agent_loop._make_handler`).
 
-- [ ] **A10 (P2, 🟡 docs-only NOTE 2026-09-16). Объявленные env-переменные и настройки не подключены.**
-  - `Settings.plugins` (env `PLUGINS`, дефолт `"linux,nginx,docker,postgres"`) **не используется нигде** — состав плагинов определяет только `config/settings.yaml::plugins.enabled` через `PluginManager.load_plugins()`. Настройка вводит в заблуждение (и не соответствует факту 10 плагинов).
-  - У `Settings` нет `env_prefix`, поэтому предложенные в `docker-compose.yml` имена `LINX_LOG_LEVEL` / `LINX_SSH_PASSWORD` **не будут прочитаны**: pydantic-settings ждёт `LOG_LEVEL`, `CONFIG_PATH`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `AGENT_LOOP`.
-  - Fix: либо `env_prefix="LINX_"` и приведение имён, либо правка имён в compose/README к фактическим полям. Effort: ~1 ч.
-  - NB (2026-09-16, docs-only): `docker-compose.yml` переписан на фактические имена (`CONFIG_PATH`, `MCP_SERVER_NAME`, `LOG_LEVEL`), `LINX_*` помечены как НЕ маппящиеся без `env_prefix`; `main.py:32` annotate. `Settings.plugins` по-прежнему не используется.
+- [x] **A10 (P2, FIXED 2026-09-17, выбранная опция — чистка). Объявленные env-переменные и настройки не подключены.**
+  - ✅ `Settings.plugins` (env `PLUGINS`) **удалено**: поле не читалось нигде и вводило в заблуждение (дефолт «4 плагина» против фактических 10). Состав плагинов определяет только `config/settings.yaml::plugins.enabled` (`PluginManager.load_plugins()`).
+  - Проверено: в `Settings.model_fields` осталось **5** полей (`mcp_server_name`, `mcp_server_version`, `config_path`, `log_level`, `agent_loop`); env `PLUGINS` игнорируется и не ломает старт при `extra='forbid'`.
+  - `env_prefix` **сознательно не вводится** (выбранная опция): README / `.env.example` / `docker-compose.yml` используют фактические имена (`CONFIG_PATH`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `LOG_LEVEL`, `AGENT_LOOP`), `LINX_*` в compose помечены как НЕ работающие. Комментарий над `Settings` обновлён (`main.py:31-35`).
+  - Docs: `.env.example` (C4 ✅), README / README.ru, `docker-compose.yml`.
 
 <a name="B"></a>
 ### B. Тесты и CI
@@ -112,7 +112,11 @@
   - `pyproject authors` → `mcp-linx team` (убран плейсхолдер `mcp-linx@example.com`). Остаток: нет файла `LICENSE` (нужен выбор лицензии), `Development Status :: 3 - Alpha`, нет `py.typed`.
 - [x] **C2. `CHANGELOG.md` создан (FIXED 2026-09-15)** — исторические фазовые логи + вехи перенесены туда; `TODO.md` сокращён до живого бэклога + TOC.
 - [ ] **C3. Нет `py.typed`** (PEP 561) при mypy strict и типизированном публичном API.
-- [ ] **C4. Нет `.env.example`**, хотя `pydantic-settings` читает `.env` (`main.py:31`, `env_file=".env"`) и `.gitignore` разрешает `!.env.example`. Задокументировать фактически поддерживаемые имена: `CONFIG_PATH`, `LOG_LEVEL`, `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `AGENT_LOOP` (+ `PLUGINS`, если починить — A10); связано с A4.
+- [x] **C4 (FIXED 2026-09-17, docs). Нет `.env.example`** — создан, хотя `pydantic-settings` читает `.env` (`main.py:36`, `env_file=".env"`), а `.gitignore` разрешает `!.env.example`.
+  - Задокументированы фактические имена: `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP` (+ `PLUGINS` не поддерживается: поле удалено в A10).
+  - Отдельный блок — секреты через `${VAR}` в `settings.yaml` (A4): `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN` (с файлами:строками) + fail-open предупреждение.
+  - Плюс `SSH_KEY_DIR` (интерполяция docker-compose, не Python). Указатель на файл добавлен в README / README.ru (Configuration).
+  - Связано с A4 ✅; остаток env-документации — D2 (секция в `docs/DEVELOPMENT.md`).
 - [ ] **C5. Нет `[project.urls]`** (Homepage/Repository/Issues) в `pyproject.toml`. (authors-плейсхолдер снят — C1 ✅ 2026-09-16.)
 - [ ] **C6. `HARNESS_ANALYSIS.md` лежит в корне** — внутренний анализ, тогда как README ведёт список документации в `docs/`. Переместить или оставить осознанно.
 - [ ] **C7.** `diagnosis_state.md` — корректно в `.gitignore` («креды, kept local only»), **не трогать**.
@@ -157,7 +161,7 @@
 
 - [x] **Волна 1 — правда в доках (2026-09-16):** D1 ✅, D4 ✅, D5 ✅, C1 🟡 (authors ✅; LICENSE/`py.typed` открыты) — остаток D2/D3.
 - [x] **Волна 2 — быстрые баги (2026-09-16):** A1 ✅, A2 ✅, A5 ✅, A6 ✅ (гейт 114 → 120 passed).
-- [ ] **Волна 3 — секьюрити-контур (🟡 2026-09-17):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста), A9 ✅ (`apply_timeout` удалён; rate-limit ✅; `command_timeout_seconds` проведён в дефолты плагинов, +15 тестов) — открыты C4 (`.env.example`), A7 (docs-NOTE), A10 (🟡 только NOTE).
+- [x] **Волна 3 — секьюрити-контур (✅ 2026-09-17, закрыта):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста), A9 ✅ (`apply_timeout` удалён; rate-limit ✅; `command_timeout_seconds` проведён в дефолты плагинов, +15 тестов), C4 ✅ (`.env.example` + указатель в README), A7 ✅ (секция `logging:` + `structlog` удалены), A10 ✅ (`Settings.plugins` удалено) — остаток env-доков: D2.
 - [ ] **Волна 4 — качество:** B1–B7, C2, C3, C5.
 - [ ] **Волна 5 — рефакторинг и фичи:** A8, E1, E2.
 

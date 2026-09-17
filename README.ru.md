@@ -53,6 +53,10 @@ docker compose run --rm mcp-linx
 
 **Русский:** Основной конфигурационный файл: `config/settings.yaml`
 
+Переменные окружения: скопируйте `.env.example` → `.env` (читает `pydantic-settings`,
+имена без префикса: `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP` и др.).
+Внутри `settings.yaml` работает подстановка `${VAR}` / `${VAR:-default}` (A4).
+
 ```yaml
 security:
   readonly: true                    # Only read-only operations / Только read-only операции

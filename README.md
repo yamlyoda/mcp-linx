@@ -60,6 +60,10 @@ docker compose run --rm mcp-linx
 
 Main configuration file: `config/settings.yaml`
 
+Environment variables: copy `.env.example` → `.env` (read by `pydantic-settings`;
+names without a prefix, e.g. `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP`).
+Secrets inside `settings.yaml` support `${VAR}` / `${VAR:-default}` expansion (A4).
+
 ```yaml
 security:
   readonly: true                    # Only read-only operations

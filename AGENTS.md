@@ -12,11 +12,18 @@
   создан `AGENTS.md` + `docs/INDEX.md`. Гейт: **114 passed, 2 skipped**.
 - 2026-09-16 (волна 1): D1 ✅ / D4 ✅ / D5 ✅ (docs-only), C1 🟡 частично (authors; LICENSE/py.typed открыты).
 - 2026-09-16 (волна 2, код): A1 ✅ / A2 ✅ (`_main_async` + `stop_event` + тест), A5 ✅ / A6 ✅ (docs-only).
-- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:41-44` + 2 теста).
-  A7 🟡 (docs-NOTE), A9 ✅ (rate-limit жив и задокументирован; закрыт 2026-09-17), A10 🟡 (только NOTE в `main.py:32`/compose).
+- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:44-47` + 2 теста).
+  A7 ✅ / A10 ✅ (закрыты 2026-09-17 — чистка, см. ниже), A9 ✅ (rate-limit жив и задокументирован).
 - 2026-09-17 (волна 3, доводка A9 CLOSED): `SecurityGuard.apply_timeout()` **удалён** (мёртвая заглушка, 0 вызовов); тезис аудита про «бессмысленные `# nosec` B507/B601» **опровергнут** probe'ом (аннотации load-bearing, bandit-WARNING ложный); `command_timeout_seconds` проведён **в дефолты плагинов** (`SecurityGuard.command_timeout` → `DiagnosticPlugin.command_timeout` → `timeout = self.command_timeout` в `_run*` 6 плагинов; explicit per-tool timeout перекрывает). Тесты: `tests/unit/test_command_timeout.py` (+15).
 - Гейт волны 3: **135 passed, 2 skipped**; `ruff check` / `ruff format --check` / `mypy` / `bandit` зелёные (bandit = 0 issues; 4 WARNING про nosec — ложные).
-- Открыты: A7/A10-остаток (волна 3), B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C4/C1-остаток.
+- 2026-09-17 (C4 ✅): создан `.env.example` — фактические имена `Settings` (`MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP`; `PLUGINS` не поддерживается: поле удалено в A10 ✅), секреты `${VAR}` (A4: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN` с файлами:строками), `SSH_KEY_DIR` (compose). Проверено прогоном: `Settings()` из `.env` мапит все имена, `${VAR}` раскрывается в реальном `settings.yaml`, файл не игнорируется (`!.env.example` → `??`). Указатель в README / README.ru.
+- 2026-09-17 (A7 ✅ / A10 ✅, чистка): из `settings.yaml` удалена мёртвая секция
+  `logging:` (на её месте NOTE-указатель: логирование = env `LOG_LEVEL` → `main.py:49-53`),
+  `structlog` убран из `pyproject.toml`; удалено мёртвое поле `Settings.plugins`
+  (env `PLUGINS` игнорируется и не ломает `extra='forbid'`). Резервы с inline-NOTE
+  «НЕ читается»: `environment.mode`/`debug`, `telemetry.log_level`. `env_prefix` не вводим.
+  **Волна 3 закрыта** (A3/A4/A7/A9/A10/C4).
+- Открыты: B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C1-остаток.
 
 ## 1. Карта репо
 
@@ -72,12 +79,16 @@ trivy image mcp-linx:ci --format json --severity HIGH,CRITICAL --ignore-unfixed 
   `apt-get install --only-upgrade gzip libpcre2-8-0 libsqlite3-0`.
 - CI: `aquasecurity/trivy-action` — теги ТОЛЬКО с префиксом `v` (`@v0.36.0`);
   ref без `v` не резолвится. `ignore-unfixed: true` — гейт только по CVE с патчем.
-- `Settings` — pydantic-settings, читает `.env`; НО: без `env_prefix` имена
-  `LINX_*` из docker-compose НЕ подхватываются (A10); креды плагинов через
-  `${VAR}` НЕ подставляются (A4); `Settings.plugins` нигде не используется (A10).
-- `validate_host()` не вызывается в `src/` (A3); `shutdown_handler` — no-op,
-  `plugin_manager_ref` пуст (A2); `audit_log_file` по дефолту
-  `/var/log/mcp-linx/audit.log` — в контейнере неписуемо (A6).
+- `Settings` — pydantic-settings, читает `.env`; имена БЕЗ префикса (`CONFIG_PATH`,
+  `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `LOG_LEVEL`, `AGENT_LOOP`); `LINX_*`
+  не поддерживаются сознательно — `env_prefix` не вводим (A10 ✅). Креды плагинов —
+  `${VAR}` / `${VAR:-default}` в `settings.yaml` (`load_config` → `_expand_env_vars`, A4 ✅;
+  fail-open: нет переменной и нет default → warning + сырой текст). Поля `plugins` нет (A10 ✅).
+- `validate_host()` вызывается в linux/nginx/systemd ДО `_resolve_adapter` (A3 ✅;
+  семантика `hosts:` vs `allowed_hosts` — `settings.yaml:44-47`); graceful shutdown
+  живой: `_main_async` + `stop_event` (A2 ✅); `audit_log_file` по дефолту
+  `/var/log/mcp-linx/audit.log` — в контейнере неписуемо, `AuditLogger` деградирует
+  в stderr-warn (A6 ✅).
 - `diagnosis_state.md` — в `.gitignore`, kept local only. НЕ трогать (C7).
 - Коммиты делает ТОЛЬКО пользователь. Агент правит файлы, не коммитит.
 

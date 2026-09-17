@@ -24,7 +24,7 @@ services:
       # Сервер читает: CONFIG_PATH, MCP_SERVER_NAME, MCP_SERVER_VERSION, LOG_LEVEL,
       # AGENT_LOOP (+ .env-файл). Секреты плагинов — через ${VAR} в settings.yaml (A4),
       # а НЕ через LINX_*. Закомментированные LINX_* ниже оставлены как пример того,
-      # что НЕ подхватывается без env_prefix (см. TODO A10).
+      # что НЕ подхватывается без env_prefix (env_prefix сознательно не вводим — A10 ✅ 2026-09-17).
       # LINX_SSH_PASSWORD: ${LINX_SSH_PASSWORD}
       # LINX_LOG_LEVEL: ${LINX_LOG_LEVEL:-INFO}
     volumes:

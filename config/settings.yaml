@@ -1,6 +1,9 @@
 # MCP-Linx configuration
 # Конфигурация плагинов и окружения
 
+# NOTE (A7, 2026-09-17): `environment.mode` / `debug` кодом НЕ читаются —
+# оставлены как зарезервированные. Уровень логирования задаётся в одном месте:
+# env LOG_LEVEL → `Settings.log_level` → `logging.basicConfig` (main.py:49-53).
 environment:
   mode: development  # development | production
   debug: true
@@ -46,7 +49,7 @@ security:
     - "127.0.0.1"
 
 telemetry:
-  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"  # A7: НЕ читается кодом (лог-уровень — env LOG_LEVEL); резерв
   audit_log: true
   # Путь к файлу аудита. Дефолт /var/log/mcp-linx/audit.log неписуем внутри
   # контейнера (A6) — AuditLogger молча деградирует в stderr-warn; для файла
@@ -170,25 +173,8 @@ plugins:
     timeout_seconds: 20
     token: "${LOKI_TOKEN:-}"  # A4 (если требуется)
 
-# NOTE (A7): секция logging: НЕ читается кодом (нет dictConfig; structlog не
-# используется — только зависимость). Уровень задаётся env LOG_LEVEL через
-# Settings.log_level. Секция оставлена как зарезервированная под dictConfig.
-logging:
-  version: 1
-  disable_existing_loggers: false
-  formatters:
-    console:
-      format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    json:
-      class: structlog.stdlib.ProcessorFormatter
-      format: "%(message)s"
-
-  handlers:
-    console:
-      class: logging.StreamHandler
-      level: INFO
-      formatter: console
-
-  root:
-    level: INFO
-    handlers: [console]
+# NOTE (A7, FIXED 2026-09-17): секция `logging:` УДАЛЕНА — её никто не читал
+# (нет `logging.config.dictConfig`), а `structlog` вычищен из зависимостей.
+# Единственная точка настройки логирования: `Settings.log_level` (env `LOG_LEVEL`)
+# → `logging.basicConfig` в `main.py:49-53`. Если понадобится dictConfig —
+# восстанавливайте секцию вместе с кодом, который её применяет.
