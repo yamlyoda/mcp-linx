@@ -135,6 +135,8 @@
   - Статус на 2026-09-17: `${VAR}` / `${VAR:-default}` реализованы (A4).
     SECURITY.md синхронизирован с фактической подстановкой из окружения процесса;
     `.env` сервера не предназначен для секретов плагинов.
+- [x] **D6 (FIXED 2026-09-17, сверка docs/code).** README EN/RU, DEVELOPMENT и ARCHITECTURE уточняют: `plugins.enabled` ограничивает инициализацию, не регистрацию tools/health-check; readonly — проверка команд, не общий запрет Docker API; rate-limit — только плагинные обработчики. Исправлены настройки запуска (env, не YAML), статус streaming, путь создания плагина и docstring `prune_containers`. Поведение кода не менялось. Полный `.venv/bin/python -m pytest -q`: 215 passed, 2 skipped, PYTEST_EXIT=0 (обёртка терминала сообщает ошибку закрытия); ruff/format изменённого Python-файла и mypy src — OK.
+
 
 <a name="E"></a>
 ### E. Роадмап фич (remote/SSH)

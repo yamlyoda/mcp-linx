@@ -70,9 +70,13 @@ An empty environment value does not trigger the default. Expansion is textual
 See [Environment and configuration](docs/DEVELOPMENT.md#environment-and-configuration)
 for local and Docker setup, audit logging, and shutdown behavior.
 
+`plugins.enabled` selects initialization only. All loaded plugins still contribute
+MCP tools and health checks; excluded plugins may return initialization errors.
+This setting does not hide tools and is not an access-control boundary.
+
 ```yaml
 security:
-  readonly: true                    # Only read-only operations
+  readonly: true                    # Command validation only; not a Docker API write gate
   max_command_output_size: 10000
   max_log_lines: 500
   command_timeout_seconds: 30      # Default plugin command timeout (per-tool timeout wins)
@@ -357,8 +361,15 @@ pytest tests/unit/test_new_plugins.py -v
 
 ## Security
 
+Rate limiting applies to plugin tool handlers only; the three system tools
+(`get_diagnostic_context`, `get_summary`, `system_health_check`) are registered
+separately and are not rate limited. Rejected calls are not audited.
+
 SecurityGuard provides:
-- **Read-only mode**: Blocks write commands (rm, write, mkfs, dd and others)
+- **Read-only mode**: Command validation blocks write commands (rm, write, mkfs, dd
+  and others) for command-executing adapters and tools. This is not a blanket
+  enforcement for every state-changing operation: non-command paths, such as
+  Docker prune, do not consult `readonly` and rely on their own `confirm` gate.
 - **Dangerous command blocking**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs etc.
 - **Output size limiting**: Truncates large command outputs
 - **Log line limiting**: Maximum number of log lines returned

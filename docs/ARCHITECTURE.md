@@ -82,7 +82,8 @@ class DiagnosticPlugin(ABC):
 
 ### Agent Loops
 - `default` — Standard MCP server
-- `streaming` — Streaming responses
+- `streaming` — Currently uses the same `mcp.run_async()` path as `default`;
+  no additional streaming-response implementation is provided by this class.
 
 ### Adapters
 - `LocalAdapter` — Local subprocess execution
@@ -108,10 +109,13 @@ class DiagnosticPlugin(ABC):
 
 ## Configuration
 
-```yaml
-mcp_server_name: "mcp-linx"
-agent_loop: "default"
+Server name and loop selection use `MCP_SERVER_NAME` and `AGENT_LOOP` in the
+process environment or server `.env`, not top-level YAML keys. See
+[Environment and configuration](DEVELOPMENT.md#environment-and-configuration).
+`plugins.enabled` selects initialization only: tools and health checks currently
+include all loaded plugins. It is not an access-control boundary.
 
+```yaml
 security:
   readonly: true
   max_command_output_size: 10000
@@ -145,17 +149,21 @@ plugins:
 
 | Extension | How to Create |
 |-----------|---------------|
-| New Plugin | Create `plugins/my_plugin/` with `__init__.py` and `tools.py` |
+| New Plugin | Create `src/mcp_linx/plugins/my_plugin/` with `__init__.py` and `tools.py` |
 | New Adapter | Extend `BaseAdapter`, implement required methods |
 | New Agent Loop | Extend `AgentLoop`, register in `get_agent_loop()` |
 | New Sandbox | Extend `Sandbox`, implement `execute()` and `is_available()` |
 
 ## Security
 
-- **Read-only mode** — blocks write operations
+- **Read-only mode** — command-level validation: `SecurityGuard.validate_command`
+  rejects write commands for command-executing adapters and tools
+  (`linux_execute_command`, privileged probes). This is not a blanket blocking of
+  every state-changing operation: non-command paths such as Docker prune do not
+  consult `readonly` and rely on their own `confirm` gate.
 - **Command validation** — whitelist + dangerous pattern detection
 - **Output limiting** — prevents memory exhaustion
-- **Host validation** — whitelist for remote hosts
+- **Host validation** — allowlist for remote hosts
 
 ## Deployment
 

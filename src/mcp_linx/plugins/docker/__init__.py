@@ -86,7 +86,11 @@ class DockerPlugin(DiagnosticPlugin):
         return await self._adapter.list_containers(all_=all_, filters=filters, limit=limit)
 
     async def prune_containers(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Prune-кандидаты (dry-run). Реальное удаление требует confirm в docker_prune tool."""
+        """Выполнить prune контейнеров через адаптер (реальное удаление).
+
+        Dry-run и требование confirm=true реализованы выше — в docker_prune tool;
+        SecurityGuard.readonly этот путь не проверяет.
+        """
         if not self._adapter:
             raise RuntimeError("Plugin not initialized")
         return await self._adapter.prune_containers(filters=filters)

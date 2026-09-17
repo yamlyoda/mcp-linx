@@ -33,6 +33,12 @@
   вместе с кодом. Поправка A8: +6 unit, не +11 (смешивались unit и full).
   Прогон `pytest tests/ -q`: 215 passed, 2 skipped (терминальный wrapper сообщил
   ошибку завершения; итог pytest сохранён в логе). Runtime-код в этой задаче не менялся.
+- 2026-09-17 (D6 ✅, docs/code): уточнены plugins.enabled (инициализация, не фильтр tools),
+  границы readonly/rate-limit, env-настройки запуска, streaming, путь нового плагина.
+  В src изменён только docstring DockerPlugin.prune_containers. Full pytest:
+  215 passed, 2 skipped, PYTEST_EXIT=0; терминальная обёртка ошибается при закрытии.
+  Ruff/format изменённого файла и mypy src — OK. Runtime-поведение не менялось.
+
 - Открыты: E1/E2 (+E3/E4/E5), C1-остаток (LICENSE/статус Alpha), Docker FROM digest; полный integration и Python 3.12/3.13 ждут CI.
 
 ## 1. Карта репо

@@ -76,8 +76,11 @@ settings belong in `.env`; process environment values take precedence:
 | `LOG_LEVEL` | `INFO` | stderr logging level |
 | `AGENT_LOOP` | `default` | `default` or `streaming` |
 
-There is no `LINX_` prefix. `PLUGINS` is not a setting: plugin selection uses
-`plugins.enabled` in YAML (absent or empty means all discovered plugins).
+There is no `LINX_` prefix. `PLUGINS` is not a setting. `plugins.enabled` in YAML
+selects plugins for **initialization only** (absent or empty means all discovered
+plugins). Currently all loaded plugins still contribute MCP tools and participate
+in health checks, including plugins excluded from initialization. Exclusion does
+not hide tools or provide an access-control boundary; uninitialized tools may fail.
 Unknown keys in `.env`, including plugin secrets and `SSH_KEY_DIR`, cause
 `Settings` validation errors. Unknown process environment variables are ignored
 by `Settings` but remain available to other consumers.

@@ -197,7 +197,7 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 - [x] Output size limited — ✅ SecurityGuard.limit_output()
 - [x] Error messages don't leak sensitive info — ✅ Generic error messages
 - [ ] Authentication/authorization implemented — ❌ Not implemented
-- [x] Audit logging enabled — ✅ Implemented in Phase 1 (audit.py + agent_loop integration)
+- [x] Audit logging enabled — ✅ Implemented in Phase 1 (audit.py + agent_loop integration). Scope: plugin tool handlers; system tools are not rate limited, and rate-limit rejections are not recorded.
 - [x] Privileged tools gated by config — ✅ `plugins.netdiag.privileged_tools: false` by default (`tcp_connect_as`, `tcpdump_probe` return error with manual command)
 - [x] New diagnostic commands restricted to read-only subcommands — ✅ `bpftool {show,dump}`, `nft list`, `ip {rule,route} show`, `iptables -S`, `ufw status` only
 
