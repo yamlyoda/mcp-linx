@@ -144,3 +144,37 @@ class TestAllowedHosts:
         plugin.hosts = FakeRegistry()  # type: ignore[assignment]
         result = await plugin._run_command("uptime", host="web-1")
         assert result["stdout"] == "ok"
+
+
+class TestGetAgentLoop:
+    """B1: выбор harness-цикла по `Settings.agent_loop`."""
+
+    def test_default_type(self):
+        main_pkg = importlib.import_module("mcp_linx.main")
+        from mcp_linx.harness import DefaultAgentLoop
+
+        assert isinstance(main_pkg.get_agent_loop("default"), DefaultAgentLoop)
+
+    def test_streaming_type(self):
+        main_pkg = importlib.import_module("mcp_linx.main")
+        from mcp_linx.harness import StreamingAgentLoop
+
+        assert isinstance(main_pkg.get_agent_loop("streaming"), StreamingAgentLoop)
+
+    def test_unknown_type_falls_back_to_default(self):
+        main_pkg = importlib.import_module("mcp_linx.main")
+        from mcp_linx.harness import DefaultAgentLoop
+
+        assert isinstance(main_pkg.get_agent_loop("nonsense"), DefaultAgentLoop)
+
+
+class TestLoadConfigMissingFile:
+    """B1: отсутствующий конфиг не падает — дефолты + warning."""
+
+    def test_missing_file_returns_empty_dict(self, tmp_path, caplog):
+        main_pkg = importlib.import_module("mcp_linx.main")
+        with caplog.at_level("WARNING", logger="mcp_linx"):
+            cfg = main_pkg.load_config(str(tmp_path / "no-such-config.yaml"))
+
+        assert cfg == {}
+        assert any("not found" in record.message for record in caplog.records)

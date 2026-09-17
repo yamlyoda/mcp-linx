@@ -1,0 +1,19 @@
+# B9: dependabot обновляет pinned GitHub Actions (B9 SHA-пиннинг) и pip-зависимости.
+# SHA-пиннинг делает CI устойчивым к переопределению тегов, dependabot — к устареванию.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"

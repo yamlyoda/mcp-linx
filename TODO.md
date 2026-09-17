@@ -86,16 +86,16 @@
 <a name="B"></a>
 ### B. Тесты и CI
 
-- [ ] **B1. Нет тестов на ядро оркестрации** — `main.py` (`load_config`, `get_agent_loop`, сигналы) и `harness/agent_loop.py::_make_handler` (rate-limit → error-ответ, добавление `metadata`, обновление `ContextAggregator`, audit в `finally`, ветка `status if "status" in locals()`). Effort: ~2 ч.
-- [ ] **B2. Нет тестов адаптеров/плагинов** `docker.py`, а также postgres/redis/kubernetes/prometheus/loki (частично покрыты только плагинными `test_new_plugins*`). Effort: ~3 ч.
-- [ ] **B3. Покрытие никогда не измерялось:** `pytest-cov` не установлен, хотя `[tool.coverage]` в pyproject есть. → добавить `pytest-cov`, снять baseline, затем `--cov-fail-under` в CI. Effort: ~1 ч.
-- [ ] **B4. CI не гоняет integration-тесты**, хотя `tests/docker-compose.test.yml` и маркер `integration` есть, а раннер имеет Docker. Добавить job `pytest -m integration`. Effort: ~1 ч.
-- [ ] **B5. CI-проверка discovery слишком слабая:** `assert n >= 10 and len(tools) >= 50` при факте 10/56 → заменить на точные `== 10` / `== 56` (ловит дрейф счётчиков). Effort: 15 мин.
-- [ ] **B6. Матрица CI = только Python 3.11**, а classifiers заявляют 3.11–3.13 → добавить 3.12/3.13. Effort: 15 мин.
-- [ ] **B7. Нет теста на дефолтную SSH-политику** (`RejectPolicy` при отсутствии `host_key_policy`). Effort: 15 мин.
+- [x] **B1 (FIXED 2026-09-17). Тесты ядра оркестрации:** `test_agent_loop_handler.py` — metadata/context, rate-limit, audit finally, ошибки и setup; `test_entrypoint.py` — выбор loop и отсутствующий конфиг, ранее добавлены env и shutdown. Отказы rate-limit сейчас не аудируются (return до try/finally); тест фиксирует текущее поведение.
+- [x] **B2 (FIXED 2026-09-17). Тесты адаптеров/плагинов:** `test_adapters_docker.py` (19) и `test_plugin_core.py` (29) — PostgreSQL, Redis, Kubernetes, Prometheus, Loki: конфиг, lifecycle, health/error, SQL/команды/URL; без сети, через фейки.
+- [x] **B3 (FIXED 2026-09-17). Coverage:** `pytest-cov` добавлен в dev; baseline unit line+branch **62.27%**, CI `--cov-fail-under=60`; **204 unit passed**.
+- [x] **B4 (FIXED 2026-09-17). Integration-job:** `pytest -m integration -q`, Docker/Compose preflight и установка `redis-tools`. Локально **5 passed, 2 skipped** (нет redis-cli); полный запуск на GitHub ещё не проверен.
+- [x] **B5 (FIXED 2026-09-17). Discovery:** точные `== 10` / `== 56` в CI и `test_discovery.py`.
+- [x] **B6 (FIXED 2026-09-17). CI matrix:** Python 3.11/3.12/3.13; локальный прогон только 3.11, остальные — при запуске CI.
+- [x] **B7 (FIXED 2026-09-17). SSH policy:** `test_ssh_policy.py` — дефолт RejectPolicy, opt-in политики, known_hosts, параметры подключения и disconnect.
 
 - [x] **B8. CI падал на резолве `aquasecurity/trivy-action@0.24.0`** — у экшена все теги идут с префиксом `v`, ref без префикса не существует («Unable to resolve action… unable to find version 0.24.0»). ✅ FIXED 2026-09-15 → `@v0.36.0` + синхронизирован `SECURITY.md:211`.
-- [ ] **B9. Рассмотреть пиннинг third-party экшенов по commit SHA** (сейчас все — по тегам: `@v4`, `@v5`, `@v6`, `@v2`, `@v0.36.0`). У trivy-action релизы immutable (`immutable: true`), так что переопределить тег нельзя, но SHA-пиннинг + `dependabot.yml` — надёжнее.
+- [x] **B9 (FIXED 2026-09-17). GitHub Actions закреплены по commit SHA**, добавлен `.github/dependabot.yml` (weekly actions + pip). Пиннинг базового Docker FROM по digest не входит в эту правку и остаётся отдельным follow-up.
 
 - [x] **B10 (FIXED 2026-09-16). CI `docker-build` падал на Trivy.**
   - Тройной fix (проверен локально `trivy image mcp-linx:ci --severity HIGH,CRITICAL --ignore-unfixed` → **Total: 0, Exit: 0**):
@@ -103,21 +103,21 @@
     2. **Dockerfile (python-слой)**: `setuptools==84.0.0` (max на PyPI; 84.1.0 не существует) + `wheel>=0.46.2` — закрывают CVE-2026-24049 (wheel) и CVE-2026-23949 (jaraco.context через setuptools). Удалять нельзя: `kubernetes` держит `setuptools` как transitive.
     3. **Dockerfile (apt-слой)**: `apt-get install --only-upgrade gzip libpcre2-8-0 libsqlite3-0` — закрывает 5 Debian HIGH (CVE-2026-41992/86145/89161/11822/11824) из базового `python:3.11-slim`; security/updates-суиты уже есть в deb822 `debian.sources`, кастомные `.list` не нужны.
   - Полный per-CVE лист — в артефакте `trivy-results` (json).
-  - B9 (SHA-пиннинг `FROM` + third-party-action) остаётся open — follow-up.
+  - B9 actions SHA закрыт 2026-09-17; пиннинг Docker `FROM` по digest остаётся отдельным follow-up.
 
 <a name="C"></a>
 ### C. Упаковка и гигиена репозитория
 
 - [x] **C1 (FIXED 2026-09-16, частично). Метаданные пакета.**
-  - `pyproject authors` → `mcp-linx team` (убран плейсхолдер `mcp-linx@example.com`). Остаток: нет файла `LICENSE` (нужен выбор лицензии), `Development Status :: 3 - Alpha`, нет `py.typed`.
+  - `pyproject authors` → `mcp-linx team` (убран плейсхолдер `mcp-linx@example.com`). Остаток: нет файла `LICENSE` (нужен выбор лицензии), `Development Status :: 3 - Alpha`. `py.typed` добавлен 2026-09-17 (C3 ✅).
 - [x] **C2. `CHANGELOG.md` создан (FIXED 2026-09-15)** — исторические фазовые логи + вехи перенесены туда; `TODO.md` сокращён до живого бэклога + TOC.
-- [ ] **C3. Нет `py.typed`** (PEP 561) при mypy strict и типизированном публичном API.
+- [x] **C3 (FIXED 2026-09-17). PEP 561:** добавлен `src/mcp_linx/py.typed`; присутствие проверено в wheel, sdist и Docker-образе.
 - [x] **C4 (FIXED 2026-09-17, docs). Нет `.env.example`** — создан, хотя `pydantic-settings` читает `.env` (`main.py:36`, `env_file=".env"`), а `.gitignore` разрешает `!.env.example`.
   - Задокументированы фактические имена: `MCP_SERVER_NAME`, `MCP_SERVER_VERSION`, `CONFIG_PATH`, `LOG_LEVEL`, `AGENT_LOOP` (+ `PLUGINS` не поддерживается: поле удалено в A10).
   - Отдельный блок — секреты через `${VAR}` в `settings.yaml` (A4): `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `PROMETHEUS_TOKEN`, `LOKI_TOKEN` (с файлами:строками) + fail-open предупреждение.
   - Плюс `SSH_KEY_DIR` (интерполяция docker-compose, не Python). Указатель на файл добавлен в README / README.ru (Configuration).
   - Связано с A4 ✅; остаток env-документации — D2 (секция в `docs/DEVELOPMENT.md`).
-- [ ] **C5. Нет `[project.urls]`** (Homepage/Repository/Issues) в `pyproject.toml`. (authors-плейсхолдер снят — C1 ✅ 2026-09-16.)
+- [x] **C5 (FIXED 2026-09-17). `[project.urls]`:** Homepage/Repository/Issues добавлены в `pyproject.toml`, проверены в метаданных собранного пакета.
 - [ ] **C6. `HARNESS_ANALYSIS.md` лежит в корне** — внутренний анализ, тогда как README ведёт список документации в `docs/`. Переместить или оставить осознанно.
 - [ ] **C7.** `diagnosis_state.md` — корректно в `.gitignore` («креды, kept local only»), **не трогать**.
 
@@ -162,7 +162,7 @@
 - [x] **Волна 1 — правда в доках (2026-09-16):** D1 ✅, D4 ✅, D5 ✅, C1 🟡 (authors ✅; LICENSE/`py.typed` открыты) — остаток D2/D3.
 - [x] **Волна 2 — быстрые баги (2026-09-16):** A1 ✅, A2 ✅, A5 ✅, A6 ✅ (гейт 114 → 120 passed).
 - [x] **Волна 3 — секьюрити-контур (✅ 2026-09-17, закрыта):** A4 ✅ (`${VAR}`-подстановка + 4 теста), A3 ✅ (wire-up `validate_host` + 2 теста), A9 ✅ (`apply_timeout` удалён; rate-limit ✅; `command_timeout_seconds` проведён в дефолты плагинов, +15 тестов), C4 ✅ (`.env.example` + указатель в README), A7 ✅ (секция `logging:` + `structlog` удалены), A10 ✅ (`Settings.plugins` удалено) — остаток env-доков: D2.
-- [ ] **Волна 4 — качество:** B1–B7, C2, C3, C5.
+- [x] **Волна 4 — качество (2026-09-17):** B1–B7, B9 (actions), C2, C3, C5. Unit: 204 passed, coverage 62.27%; integration: 5 passed / 2 skipped (локально нет redis-cli). Ruff/mypy/bandit зелёные; wheel/sdist, Docker build и MCP smoke — OK. Матрица 3.12/3.13 и полный integration — ожидают CI.
 - [ ] **Волна 5 — рефакторинг и фичи:** A8, E1, E2.
 
 После каждой волны прогонять гейты: `ruff check`, `ruff format --check`, `mypy`, `bandit`, `pytest`, валидация YAML, баланс code-fence в `*.md`.

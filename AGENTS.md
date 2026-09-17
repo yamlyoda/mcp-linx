@@ -23,7 +23,8 @@
   (env `PLUGINS` игнорируется и не ломает `extra='forbid'`). Резервы с inline-NOTE
   «НЕ читается»: `environment.mode`/`debug`, `telemetry.log_level`. `env_prefix` не вводим.
   **Волна 3 закрыта** (A3/A4/A7/A9/A10/C4).
-- Открыты: B1–B7/B9 (волна 4), A8/E1–E4 (волна 5), D2/D3/C1-остаток.
+- 2026-09-17 (волна 4 ✅): B1–B7, B9 (actions SHA + Dependabot), C3 (`py.typed`), C5 (project URLs). **204 unit passed, coverage 62.27%**, CI gate 60%; integration **5 passed, 2 skipped** (локально нет redis-cli; CI устанавливает redis-tools). Python matrix 3.11/3.12/3.13; 3.12/3.13 ещё не запускались локально. Ruff/format/mypy/bandit зелёные. Wheel/sdist содержат py.typed и URLs; Docker build + MCP stdio smoke OK. Runtime-код не менялся. Отказы rate-limit не аудируются — текущее поведение зафиксировано тестом.
+- Открыты: A8/E1–E4 (волна 5), D2/D3/C1-остаток (LICENSE/статус Alpha), Docker FROM digest; полный integration и Python 3.12/3.13 ждут CI.
 
 ## 1. Карта репо
 
