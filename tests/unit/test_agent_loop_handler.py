@@ -112,11 +112,10 @@ class TestHandlerRateLimit:
         assert second["metadata"] == {"plugin": "stub", "tool": "stub_tool"}
         # второй вызов до execute_func не дошёл
         assert len(executed) == 1
-        # NB: зафиксированное поведение — отказ по rate-limit НЕ пишется в audit:
-        # `return` стоит до `try/finally` хендлера, поэтому в логе только успешный
-        # вызов. Если отказы должны аудироваться, переносим возврат внутрь try.
-        assert audit.log_call.call_count == 1
-        assert audit.log_call.call_args.kwargs["status"] == "healthy"
+        # Отказ по rate-limit тоже аудируется: проверка перенесена внутрь try/finally.
+        assert audit.log_call.call_count == 2
+        assert audit.log_call.call_args.kwargs["status"] == "error"
+        assert "Rate limit exceeded" in audit.log_call.call_args.kwargs["error"]
 
 
 class TestHandlerErrorPath:

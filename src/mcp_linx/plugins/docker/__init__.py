@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp_linx.adapters.docker import DockerAdapter
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
+from mcp_linx.security import SecurityError, SecurityGuard
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 from mcp_linx.types import ToolResult as ToolResult
 
@@ -21,6 +22,7 @@ class DockerPlugin(DiagnosticPlugin):
     def __init__(self):
         self._adapter: DockerAdapter | None = None
         self._config: PluginConfig | None = None
+        self._security: SecurityGuard | None = None
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.docker.tools import (
@@ -51,6 +53,16 @@ class DockerPlugin(DiagnosticPlugin):
         self._config = config
         self._adapter = DockerAdapter(config)
         await self._adapter.connect()
+
+        sec = config.get("security", {}) if isinstance(config.get("security"), dict) else {}
+        self._security = SecurityGuard(
+            {
+                "readonly": bool(sec.get("readonly", True)),
+                "max_command_output_size": int(sec.get("max_command_output_size", 10000)),
+                "max_log_lines": int(sec.get("max_log_lines", 500)),
+                "allowed_hosts": sec.get("allowed_hosts", ["localhost", "127.0.0.1"]),
+            }
+        )
 
     def _require_adapter(self) -> DockerAdapter:
         """Вернуть адаптер или выбросить ошибку инициализации."""
@@ -88,9 +100,19 @@ class DockerPlugin(DiagnosticPlugin):
     async def prune_containers(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
         """Выполнить prune контейнеров через адаптер (реальное удаление).
 
-        Dry-run и требование confirm=true реализованы выше — в docker_prune tool;
-        SecurityGuard.readonly этот путь не проверяет.
+        Dry-run и требование confirm=true реализованы выше — в docker_prune tool.
+        Здесь закрыт второй барьер: при `security.readonly: true` (дефолт) удаление
+        запрещено, даже если инструмент вызван в обход проверки confirm.
+
+        Raises:
+            SecurityError: read-only режим запрещает удаление.
+            RuntimeError: плагин не инициализирован.
         """
+        if self._security is not None and self._security.readonly:
+            raise SecurityError(
+                "docker prune is a write operation and is blocked by security.readonly; "
+                "set security.readonly: false to allow container removal"
+            )
         if not self._adapter:
             raise RuntimeError("Plugin not initialized")
         return await self._adapter.prune_containers(filters=filters)

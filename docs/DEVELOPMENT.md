@@ -77,10 +77,11 @@ settings belong in `.env`; process environment values take precedence:
 | `AGENT_LOOP` | `default` | `default` or `streaming` |
 
 There is no `LINX_` prefix. `PLUGINS` is not a setting. `plugins.enabled` in YAML
-selects plugins for **initialization only** (absent or empty means all discovered
-plugins). Currently all loaded plugins still contribute MCP tools and participate
-in health checks, including plugins excluded from initialization. Exclusion does
-not hide tools or provide an access-control boundary; uninitialized tools may fail.
+selects the **active plugin set**: only listed plugins are loaded, initialized,
+register MCP tools, and participate in health checks (`load_plugins()` applies this
+filter). An absent or empty list means all discovered plugins. Per-plugin
+`enabled: true` keys were removed — they were never read. This is composition, not
+an access-control boundary.
 Unknown keys in `.env`, including plugin secrets and `SSH_KEY_DIR`, cause
 `Settings` validation errors. Unknown process environment variables are ignored
 by `Settings` but remain available to other consumers.
@@ -130,8 +131,12 @@ the server. Rate-limit rejections currently are not recorded in the audit log.
 
 On platforms supporting asyncio signal handlers, SIGTERM/SIGINT (including
 `docker stop`) request shutdown: the server task is cancelled and its cleanup
-closes plugin resources and the multi-host SSH pool. Windows signal handling is
-limited; allow sufficient container stop time for cleanup.
+closes plugin resources, the multi-host SSH pool and any PostgreSQL SSH tunnel.
+Windows signal handling is limited; allow sufficient container stop time for cleanup.
+
+Runtime SSH tuning lives in YAML, not in the environment: `retry_attempts` /
+`retry_backoff_seconds` and the PostgreSQL tunnel (`plugins.postgres.ssh.tunnel`) are
+described in README → "SSH reliability: retries and tunnels".
 
 ## Testing
 

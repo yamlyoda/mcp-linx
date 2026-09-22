@@ -9,7 +9,11 @@ from typing import Any
 import paramiko
 
 from mcp_linx.adapters.base import BaseAdapter
-from mcp_linx.adapters.ssh_pool import SSHConnectionPool, exec_command_sync
+from mcp_linx.adapters.ssh_pool import (
+    SSHConnectionPool,
+    exec_command_with_retry,
+    retry_params,
+)
 
 
 class SSHAdapter(BaseAdapter):
@@ -60,9 +64,19 @@ class SSHAdapter(BaseAdapter):
         Returns:
             dict с stdout, stderr, returncode
         """
-        client = await self._ensure_client()
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, exec_command_sync, client, command, timeout)
+        await self._ensure_client()
+        loop = asyncio.get_running_loop()
+        attempts, backoff = retry_params(self.config)
+        return await loop.run_in_executor(
+            None,
+            exec_command_with_retry,
+            self._pool,
+            self.config,
+            command,
+            timeout,
+            attempts,
+            backoff,
+        )
 
     async def execute_and_parse(
         self,

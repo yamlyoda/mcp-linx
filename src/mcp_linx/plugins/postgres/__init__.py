@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import suppress
 from typing import Any
 
 import psycopg2
 
+from mcp_linx.adapters.ssh_pool import SSHConnectionPool, SSHTunnel
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 from mcp_linx.types import ToolResult as ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresPlugin(DiagnosticPlugin):
@@ -24,6 +29,8 @@ class PostgresPlugin(DiagnosticPlugin):
     def __init__(self) -> None:
         self._conn: Any = None
         self._config: PluginConfig | None = None
+        self._tunnel: SSHTunnel | None = None
+        self._ssh_pool: SSHConnectionPool | None = None
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.postgres.tools import (
@@ -67,6 +74,8 @@ class PostgresPlugin(DiagnosticPlugin):
         password = config.get("password", "")
         ssl_mode = config.get("ssl_mode", "prefer")
 
+        host, port = self._maybe_start_tunnel(config, host, port)
+
         conn_params: dict[str, Any] = {
             "host": host,
             "port": port,
@@ -82,6 +91,29 @@ class PostgresPlugin(DiagnosticPlugin):
 
         self._conn = psycopg2.connect(**conn_params)
         self._conn.autocommit = True
+
+    def _maybe_start_tunnel(self, config: dict[str, Any], host: Any, port: int) -> tuple[Any, int]:
+        """Поднять SSH-туннель к PostgreSQL, если он запрошен (E2).
+
+        Включается явно: `plugins.postgres.ssh.tunnel: true` вместе с
+        `plugins.postgres.ssh.host`. Возвращает адрес, к которому подключаться.
+
+        Raises:
+            RuntimeError: туннель запрошен, но `ssh.host` не задан.
+        """
+        ssh = config.get("ssh", {})
+        if not isinstance(ssh, dict) or not ssh.get("tunnel"):
+            return host, port
+        if not ssh.get("host"):
+            raise RuntimeError("ssh.tunnel requires ssh.host (SSH server to tunnel through)")
+
+        self._ssh_pool = SSHConnectionPool()
+        client = self._ssh_pool.get(dict(ssh))
+        self._tunnel = SSHTunnel(client, str(host), port)
+        self._tunnel.start()
+        local_host, local_port = self._tunnel.local_address
+        logger.info(f"PostgreSQL via SSH tunnel {local_host}:{local_port} -> {host}:{port}")
+        return local_host, local_port
 
     async def health_check(self) -> HealthStatus:
         try:
@@ -100,8 +132,15 @@ class PostgresPlugin(DiagnosticPlugin):
 
     async def destroy(self) -> None:
         if self._conn:
-            self._conn.close()
+            with suppress(Exception):
+                self._conn.close()
             self._conn = None
+        if self._tunnel is not None:
+            self._tunnel.stop()
+            self._tunnel = None
+        if self._ssh_pool is not None:
+            self._ssh_pool.close_all()
+            self._ssh_pool = None
 
     async def _execute_query(
         self, query: str, params: tuple[Any, ...] | None = None

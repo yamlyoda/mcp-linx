@@ -182,22 +182,22 @@ class DefaultAgentLoop(AgentLoop):
         async def handler(params: dict[str, Any] | None = None) -> dict[str, Any]:
             params = params or {}
             rate_key = f"{plugin.id}:{tool_name}"
-
-            # Rate limiting
-            if rate_limiter is not None:
-                try:
-                    rate_limiter.enforce(rate_key)
-                except Exception as e:
-                    return {
-                        "status": "error",
-                        "error_message": str(e),
-                        "metadata": {"plugin": plugin.id, "tool": tool_name},
-                    }
-
             start = time.monotonic()
             error: str | None = None
 
             try:
+                # Rate limiting — внутри try, чтобы отказ тоже попал в audit (finally)
+                if rate_limiter is not None:
+                    try:
+                        rate_limiter.enforce(rate_key)
+                    except Exception as e:
+                        error = str(e)
+                        return {
+                            "status": "error",
+                            "error_message": error,
+                            "metadata": {"plugin": plugin.id, "tool": tool_name},
+                        }
+
                 result = await execute_func(plugin, params)
 
                 # Добавляем метаданные

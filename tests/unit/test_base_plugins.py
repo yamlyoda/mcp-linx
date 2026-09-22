@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -451,6 +452,95 @@ class TestDockerPruneSafety:
         assert result.status == Status.HEALTHY
         assert result.data["mode"] == "executed"
         plugin.prune_containers.assert_awaited_once()
+
+
+class TestDockerPruneReadonly:
+    """Wave 9: `security.readonly` закрывает некомандный write-путь (Docker prune)."""
+
+    def _plugin(self, readonly: bool):
+        from mcp_linx.plugins.docker import DockerPlugin
+        from mcp_linx.security import SecurityGuard
+
+        plugin = DockerPlugin()
+        plugin._security = SecurityGuard({"readonly": readonly})
+        adapter = MagicMock()
+        adapter.prune_containers = AsyncMock(return_value={"SpaceReclaimed": 1})
+        adapter.list_containers = AsyncMock(return_value=[])
+        plugin._adapter = adapter
+        return plugin, adapter
+
+    @pytest.mark.asyncio
+    async def test_execute_blocked_in_readonly(self):
+        from mcp_linx.plugins.docker.tools import docker_prune
+        from mcp_linx.types import Status
+
+        plugin, adapter = self._plugin(readonly=True)
+
+        result = await docker_prune(plugin, {"execute": True, "confirm": True})
+
+        assert result.status == Status.ERROR
+        assert "readonly" in result.error_message
+        adapter.prune_containers.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dry_run_allowed_in_readonly(self):
+        from mcp_linx.plugins.docker.tools import docker_prune
+        from mcp_linx.types import Status
+
+        plugin, adapter = self._plugin(readonly=True)
+
+        result = await docker_prune(plugin, {})
+
+        assert result.status == Status.HEALTHY
+        assert result.data["mode"] == "dry-run"
+        adapter.prune_containers.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_allowed_when_readonly_disabled(self):
+        from mcp_linx.plugins.docker.tools import docker_prune
+        from mcp_linx.types import Status
+
+        plugin, adapter = self._plugin(readonly=False)
+
+        result = await docker_prune(plugin, {"execute": True, "confirm": True})
+
+        assert result.status == Status.HEALTHY
+        adapter.prune_containers.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_plugin_method_raises_security_error_in_readonly(self):
+        """Барьер стоит в методе плагина: обход tool-проверки не помогает."""
+        from mcp_linx.security import SecurityError
+
+        plugin, adapter = self._plugin(readonly=True)
+
+        with pytest.raises(SecurityError, match="readonly"):
+            await plugin.prune_containers()
+
+        adapter.prune_containers.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_initialize_wires_guard_from_config(self, monkeypatch):
+        import mcp_linx.plugins.docker as mod
+
+        class _FakeAdapter:
+            def __init__(self, config: Any) -> None: ...
+
+            async def connect(self) -> None: ...
+
+        monkeypatch.setattr(mod, "DockerAdapter", _FakeAdapter)
+        plugin = mod.DockerPlugin()
+
+        await plugin.initialize({"security": {"readonly": False}})
+
+        assert plugin._security is not None
+        assert plugin._security.readonly is False
+
+    def test_guard_defaults_to_readonly(self):
+        from mcp_linx.security import SecurityGuard
+
+        assert SecurityGuard().readonly is True
+        assert SecurityGuard({"readonly": False}).readonly is False
 
 
 class TestPostgresTools:

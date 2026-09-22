@@ -12,7 +12,9 @@
 # =============================================================================
 
 # ---------- Stage 1: сборка wheel ----------
-FROM python:3.11-slim AS builder
+# Базовый образ запинен по digest (supply-chain): обновление — осознанное действие.
+# Проверить/обновить: docker buildx imagetools inspect python:3.11-slim
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534 AS builder
 
 # Для корпоративных сетей с TLS-инспекцией: сборка с
 # --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org"
@@ -36,7 +38,7 @@ COPY src/ ./src/
 RUN pip wheel --no-deps --wheel-dir /wheels .
 
 # ---------- Stage 2: runtime ----------
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534 AS runtime
 
 ARG PIP_TRUSTED_HOST=""
 

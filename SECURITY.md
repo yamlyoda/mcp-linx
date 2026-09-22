@@ -8,7 +8,12 @@ This document describes security findings in the MCP-Linx codebase. Issues are c
 
 ## Critical Issues
 
-### 1. Command Injection in `linux_processes` (HIGH)
+> **Status (2026-09-18): all three findings below are FIXED and verified in code.**
+> They are kept as history; each entry has a `Fixed` note with the current
+> verification. Line numbers are from the original audit date and no longer point
+> at the reviewed code — see `Files Checked` for current locations.
+
+### 1. Command Injection in `linux_processes` (HIGH) — ✅ FIXED
 **Location**: `src/mcp_linx/plugins/linux/tools.py:188`
 
 **Problem**: User input `filter_str` is directly interpolated into a shell command:
@@ -29,9 +34,12 @@ import shlex
 command = f"ps aux | grep -i {shlex.quote(filter_str)} | head -{limit}"
 ```
 
+**Fixed (2026-09)**: implemented exactly as above — `plugins/linux/tools.py`,
+`linux_processes` (`safe_filter = shlex.quote(filter_str)`).
+
 ---
 
-### 2. Path Traversal in `nginx_logs` (HIGH)
+### 2. Path Traversal in `nginx_logs` (HIGH) — ✅ FIXED
 **Location**: `src/mcp_linx/plugins/nginx/tools.py:157`
 
 **Problem**: User input `log_type` is used to construct file path without validation:
@@ -52,9 +60,13 @@ if log_type not in ALLOWED_LOG_TYPES:
     return ToolResult.error(f"Invalid log_type. Allowed: {ALLOWED_LOG_TYPES}")
 ```
 
+**Fixed (2026-09)**: `log_type` is matched against an explicit allowlist
+(`error`/`access`/`error_full`/`access_full`) in `plugins/nginx/tools.py`; no
+user-controlled path segments remain.
+
 ---
 
-### 3. SQL Injection in `pg_tables` (HIGH)
+### 3. SQL Injection in `pg_tables` (HIGH) — ✅ FIXED
 **Location**: `src/mcp_linx/plugins/postgres/tools.py:223`
 
 **Problem**: User input `schema` is directly interpolated into SQL query:
@@ -80,6 +92,10 @@ query = """
 """
 tables = await plugin._execute_query(query, (schema,))
 ```
+
+**Fixed (2026-09)**: `pg_tables` validates `schema` against an allowlist
+(`public`, `pg_catalog`, `information_schema`) **and** uses a parameterized query
+(`WHERE schemaname = %s`, params `(schema,)`).
 
 ---
 
@@ -196,8 +212,9 @@ lines = max(1, min(int(params.get("lines", 100)), 1000))
 - [x] Shell commands use proper escaping — ✅ shlex.quote() applied
 - [x] Output size limited — ✅ SecurityGuard.limit_output()
 - [x] Error messages don't leak sensitive info — ✅ Generic error messages
-- [ ] Authentication/authorization implemented — ❌ Not implemented
+- [ ] Authentication/authorization implemented — ❌ Not implemented, and **by design out of scope for the current transport**. The server speaks MCP over stdio (`python -m mcp_linx.main`), so its trust boundary is the parent process that spawns it: there is no network listener to authenticate against. Consequences that must be respected in deployment: run it only in a trusted local context (same user as the MCP client), do not expose it through a network bridge that forwards stdin/stdout of an untrusted party, and treat every tool as fully authorized for the configured hosts. **Before adding any HTTP/SSE transport or a shared multi-tenant deployment, authentication and authorization must be implemented first** (see Long-term Improvements #11).
 - [x] Audit logging enabled — ✅ Implemented in Phase 1 (audit.py + agent_loop integration). Scope: plugin tool handlers; system tools are not rate limited, and rate-limit rejections are not recorded.
+- [x] Rate limiting for tool calls — ✅ `security.rate_limit_max_calls` / `rate_limit_window_seconds` applied in `agent_loop._make_handler`; rejections are audited (2026-09-18)
 - [x] Privileged tools gated by config — ✅ `plugins.netdiag.privileged_tools: false` by default (`tcp_connect_as`, `tcpdump_probe` return error with manual command)
 - [x] New diagnostic commands restricted to read-only subcommands — ✅ `bpftool {show,dump}`, `nft list`, `ip {rule,route} show`, `iptables -S`, `ufw status` only
 
@@ -251,6 +268,10 @@ pip-audit --skip-editable                  # No known vulnerabilities found
 | `src/mcp_linx/plugins/postgres/__init__.py` | ✅ Clean | No hardcoded credentials |
 | `src/mcp_linx/plugins/postgres/tools.py` | ✅ Fixed | SQL injection fixed with parameterized query |
 | `config/settings.yaml` | ✅ Clean | Secrets from process environment via `${VAR}`; missing-variable fallback and YAML quoting limitations apply |
+| `src/mcp_linx/adapters/ssh_pool.py` | ✅ Clean | Shared SSH path: pool, `exec_command_with_retry` (E1), `SSHTunnel` (`direct-tcpip`, E2), host-key policy unchanged |
+| `src/mcp_linx/security.py` | ✅ Clean | `readonly` exposed as a property; command allowlist + dangerous patterns unchanged |
+| `src/mcp_linx/plugins/docker/__init__.py` | ✅ Clean | `prune_containers` refuses to run while `security.readonly` is true (write-path gate) |
+| `src/mcp_linx/harness/agent_loop.py` | ✅ Clean | Rate-limit check inside try/finally so rejections are audited with the error text |
 | `tests/conftest.py` | ✅ Clean | Test fixtures only |
 | `src/mcp_linx/plugins/systemd/tools.py` | ✅ Clean | `service_ip_filter`: unit + bpftool (LPM-trie→CIDR), `_UNIT_RE` allowlist |
 | `src/mcp_linx/plugins/linux/tools.py` | ✅ Clean | `linux_firewall`: nft/ip rule/iptables/ufw read-only snapshot, marks parsing |

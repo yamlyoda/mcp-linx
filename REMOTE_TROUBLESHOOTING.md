@@ -52,19 +52,32 @@ with `{"host": "web-1"}` runs on `web-1`; if `host` is omitted, the local machin
 
 ---
 
-### 2. SSH Tunnel Support (HIGH)
+### 2. SSH Tunnel Support (HIGH) — ✅ FIXED (2026-09-18)
 **Problem**: PostgreSQL config mentions SSH tunnel but no implementation exists.
 
-**Current config**:
+**Implemented**: `SSHTunnel` (`src/mcp_linx/adapters/ssh_pool.py`) — local port forwarding via
+`transport.open_channel("direct-tcpip", ...)`. `PostgresPlugin` starts it when
+`plugins.postgres.ssh.tunnel: true` and connects to the tunnel's local address:
+
 ```yaml
-postgres:
-  ssh:
-    tunnel_host: null  # Not implemented!
+plugins:
+  postgres:
+    host: db.internal        # resolved on the SSH side
+    port: 5432
+    ssh:
+      host: bastion          # SSH server to tunnel through
+      username: ops
+      key_file: ~/.ssh/id_rsa
+      tunnel: true           # opt-in; requires ssh.host
 ```
 
-**Needed**: Automatic SSH tunnel creation for PostgreSQL, Redis, etc.
+Redis needs no tunnel: its tools execute `redis-cli` on the remote host over SSH.
 
-**Solution**: Implement `SSHTunnelAdapter` using `sshtunnel` library.
+**Verification**: `tests/unit/test_ssh_tunnel.py` (forwarding with a fake transport) and
+`tests/unit/test_postgres_tunnel.py` (plugin wiring). End-to-end verification against a
+real SSH server is still pending — it is not covered in CI.
+
+`import SSHTunnel` → `mcp_linx.adapters.ssh_pool.SSHTunnel`.
 
 ---
 
@@ -107,10 +120,10 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 **Needed**:
 - Keep-alive mechanism — ✅ DONE (`ssh_pool.py`: `transport.set_keepalive(30)` + `is_active()` check with reconnect of dead clients)
-- Automatic reconnection — 🟡 PARTIAL (dead client → reconnect; live-but-broken transport → no retry yet, see E1)
-- Connection health checks — ❌ TODO (no metrics/probes; see E1)
+- Automatic reconnection — ✅ DONE (dead client → reconnect; live-but-broken transport → retry + drop + reconnect, E1)
+- Connection health checks — ❌ TODO (no metrics/probes; keepalive + is_active() only)
 
-**Status**: keepalive + dead-client reconnect implemented; retry for live-but-broken transports and metrics remain open.
+**Status**: keepalive, dead-client reconnect and retry for connection-level errors are implemented; metrics/probes remain open.
 
 ---
 
@@ -121,10 +134,19 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 ---
 
-### 8. Timeout and Retry Logic (MEDIUM)
+### 8. Timeout and Retry Logic (MEDIUM) — 🟡 PARTIAL (retry done, no library)
 **Problem**: Network issues cause immediate failures. No retry mechanism.
 
-**Solution**: Use `tenacity` library for retry with exponential backoff.
+**Implemented (2026-09-18)**: `exec_command_with_retry` in `ssh_pool.py` retries
+**connection-level** errors (`SSHException`, `EOFError`, `OSError`, `ConnectionError`),
+drops the dead client from the pool and reconnects. Configured per host/plugin:
+`retry_attempts` (default 2; `1` disables) and `retry_backoff_seconds` (default 0.5,
+linear growth). A non-zero command exit code is a normal result and is not retried.
+
+**Not done**: no `tenacity` dependency (not needed for the current linear backoff), and
+no jitter/circuit breaker.
+
+**Verification**: `tests/unit/test_ssh_retry.py`.
 
 ---
 
@@ -134,12 +156,12 @@ Config options per SSH adapter (`config/settings.yaml`):
 |----------|---------|--------|--------|
 | P0 | Multi-host support | Medium | ✅ FIXED |
 | P0 | Connection pooling | Medium | ✅ FIXED |
-| P1 | SSH tunnel for PostgreSQL | Low | TODO |
+| P1 | SSH tunnel for PostgreSQL | Low | ✅ FIXED (2026-09-18; E2) |
 | P1 | Host key verification | Low | ✅ FIXED |
-| P1 | Connection health monitoring | Low | 🟡 PARTIAL (keepalive + dead-client reconnect done; retry/metrics → E1) |
+| P1 | Connection health monitoring | Low | 🟡 PARTIAL (keepalive + dead-client reconnect + retry done; metrics/probes open) |
 | P2 | Jump host support | Medium | TODO |
 | P2 | Async SSH library | High | TODO |
-| P2 | Retry logic | Low | TODO |
+| P2 | Retry logic | Low | ✅ FIXED (2026-09-18; E1) |
 | P3 | Connection manager pattern | High | TODO |
 
 ---
@@ -148,8 +170,8 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 1. ✅ **Add `host` parameter to tool calls** — done for `linux_*`, `nginx_*` (except `nginx_stub_status`), `systemd_*`
 2. **Add keep-alive to SSH** — ✅ DONE (`transport.set_keepalive(30)` in `ssh_pool.py`)
-3. **Add connection retry** — handles transient network issues
-4. **Document SSH tunnel setup** — manual tunnel creation guide
+3. **Add connection retry** — ✅ DONE (`exec_command_with_retry` in `ssh_pool.py`; `retry_attempts` / `retry_backoff_seconds`, connection errors only)
+4. **Document SSH tunnel setup** — ✅ DONE (README → SSH reliability: retries and tunnels; `SSHTunnel` + `plugins.postgres.ssh.tunnel: true`)
 
 ---
 

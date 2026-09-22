@@ -1,17 +1,16 @@
 # MCP-Linx configuration
 # Конфигурация плагинов и окружения
 
-# NOTE (A7, 2026-09-17): `environment.mode` / `debug` кодом НЕ читаются —
-# оставлены как зарезервированные. Уровень логирования задаётся в одном месте:
+# NOTE (wave 6, 2026-09-18): секция `environment:` (mode/debug) удалена —
+# код её не читал. Уровень логирования задаётся в одном месте:
 # env LOG_LEVEL → `Settings.log_level` → `logging.basicConfig` (main.py:49-53).
-environment:
-  mode: development  # development | production
-  debug: true
 
 # Multi-host: удалённые хосты для диагностики по SSH.
 # Инструменты linux_*/nginx_* (кроме nginx_stub_status)/systemd_* принимают
 # параметр host: <имя из списка>.
 # Поле password — не хранить в файле; переопределяйте через env.
+# E1: retry_attempts / retry_backoff_seconds работают и в hosts.<имя>, и в
+# plugins.<плагин>.ssh (дефолты 2 и 0.5); повтор только на ошибках соединения.
 hosts: {}
 # hosts:
 #   web-1:
@@ -49,13 +48,18 @@ security:
     - "127.0.0.1"
 
 telemetry:
-  log_level: "INFO"  # A7: НЕ читается кодом (лог-уровень — env LOG_LEVEL); резерв
   audit_log: true
   # Путь к файлу аудита. Дефолт /var/log/mcp-linx/audit.log неписуем внутри
   # контейнера (A6) — AuditLogger молча деградирует в stderr-warn; для файла
   # смонтируйте том (-v ./logs:/var/log/mcp-linx) либо задайте свой путь.
   audit_log_file: "/var/log/mcp-linx/audit.log"
 
+# Активный набор плагинов: только перечисленные ниже загружаются и
+# инициализируются, их инструменты регистрируются в MCP и они участвуют в
+# health-check. Пустой список или отсутствие ключа = все обнаруженные плагины.
+# Это состав, а не граница доступа (см. README → Security).
+# NOTE (wave 6, 2026-09-18): per-plugin ключи `enabled: true` удалены — код их
+# не читал; единственный переключатель состава — этот список.
 plugins:
   enabled:
     - linux
@@ -70,7 +74,6 @@ plugins:
     - loki
 
   linux:
-    enabled: true
     # Если SSH не указан — используется локальный хост
     ssh:
       host: null          # null = localhost
@@ -82,7 +85,6 @@ plugins:
       known_hosts: null   # путь к known_hosts (null = системный ~/.ssh/known_hosts)
 
   nginx:
-    enabled: true
     config_path: "/etc/nginx/nginx.conf"
     log_path: "/var/log/nginx"
     access_log: "access.log"
@@ -96,7 +98,6 @@ plugins:
       key_file: null
 
   docker:
-    enabled: true
     # Docker socket или remote API
     host: "unix:///var/run/docker.sock"  # или "tcp://docker-host:2375"
     timeout_seconds: 10
@@ -105,7 +106,6 @@ plugins:
       status: "running"  # по умолчанию показывать running контейнеры
 
   postgres:
-    enabled: true
     # Подключение к PostgreSQL
     host: "localhost"
     port: 5432
@@ -116,18 +116,18 @@ plugins:
     # Лимиты
     max_connections_query: 100
     slow_query_threshold_ms: 1000
-    # SSH tunnel (опционально)
-    # NOTE (A5): ключи tunnel_host/tunnel_port зарезервированы под будущие
-    # SSH-туннели (E2) и сейчас ни на что не влияют — PostgreSQL ходит напрямую.
-    # Не задавайте их в надежде на туннелирование.
+    # SSH tunnel (опционально, E2)
+    # РЕАЛИЗОВАНО: ssh.host + ssh.tunnel: true → локальный форвард до host:port
+    # через SSH-сервер; решает случай «БД доступна только с bastion-хоста».
+    # При туннеле verify-full проверяет адрес туннеля — предпочтителен verify-ca.
     ssh:
       host: null
       port: 22
       username: null
       key_file: null
+      tunnel: false        # true = поднять локальный порт-форвардинг (требует host)
 
   redis:
-    enabled: true
     host: "localhost"
     port: 6379
     password: "${REDIS_PASSWORD:-}"  # A4: раскрывается из env при загрузке
@@ -138,7 +138,6 @@ plugins:
       key_file: null
 
   systemd:
-    enabled: true
     ssh:
       host: null
       port: 22
@@ -146,12 +145,10 @@ plugins:
       key_file: null
 
   netdiag:
-    enabled: true
     timeout_seconds: 15
     privileged_tools: false  # tcp_connect_as / tcpdump_probe (runuser, tcpdump) — только чтение с лимитами
 
   kubernetes:
-    enabled: true
     namespace: "default"
     kubeconfig: null  # null = ~/.kube/config
     context: null     # null = current-context
@@ -162,13 +159,11 @@ plugins:
       key_file: null
 
   prometheus:
-    enabled: true
     base_url: "http://localhost:9090"
     timeout_seconds: 20
     token: "${PROMETHEUS_TOKEN:-}"  # A4 (если требуется)
 
   loki:
-    enabled: true
     base_url: "http://localhost:3100"
     timeout_seconds: 20
     token: "${LOKI_TOKEN:-}"  # A4 (если требуется)

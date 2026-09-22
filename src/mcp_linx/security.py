@@ -96,6 +96,15 @@ class SecurityGuard:
         self._allowed_hosts = set(self._config.get("allowed_hosts", ["localhost"]))
 
     @property
+    def readonly(self) -> bool:
+        """Read-only режим из `security.readonly` (по умолчанию True).
+
+        Используется некомандными путями (например Docker prune), которые не
+        проходят через `validate_command`, но обязаны уважать тот же флаг.
+        """
+        return bool(self._readonly)
+
+    @property
     def command_timeout(self) -> int:
         """Дефолтный таймаут команд (сек) из `security.command_timeout_seconds`.
 

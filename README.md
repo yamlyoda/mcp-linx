@@ -2,6 +2,10 @@
 
 > Русская версия: [`README.ru.md`](./README.ru.md).
 
+> **Status: Alpha (1.0.0).** The plugin/tool API and configuration keys may change
+> without a deprecation period. Not yet hardened for untrusted networks — see
+> [Security](#security).
+
 MCP-Linx is an MCP (Model Context Protocol) server for Linux infrastructure diagnostics. It provides tools for monitoring and diagnosing components: Linux host, Nginx, Docker, PostgreSQL, Redis, Systemd, Netdiag, Kubernetes, Prometheus, Loki.
 
 ---
@@ -70,9 +74,10 @@ An empty environment value does not trigger the default. Expansion is textual
 See [Environment and configuration](docs/DEVELOPMENT.md#environment-and-configuration)
 for local and Docker setup, audit logging, and shutdown behavior.
 
-`plugins.enabled` selects initialization only. All loaded plugins still contribute
-MCP tools and health checks; excluded plugins may return initialization errors.
-This setting does not hide tools and is not an access-control boundary.
+`plugins.enabled` selects the active plugin set: only listed plugins are loaded,
+initialized, expose MCP tools, and participate in health checks. An empty or absent
+list means all discovered plugins. This is configuration of composition, not an
+access-control boundary (system tools and the MCP transport are unaffected).
 
 ```yaml
 security:
@@ -129,6 +134,68 @@ plugins:
   kubernetes:
     namespace: "default"
 ```
+
+---
+
+### PostgreSQL SSL modes
+
+`plugins.postgres.ssl_mode` is passed to libpq as `sslmode` (via `psycopg2.connect`),
+so values and semantics are libpq's:
+
+| Mode | Encryption | Server certificate | Hostname check |
+|---|---|---|---|
+| `disable` | no | — | — |
+| `allow` | if server requires | no | no |
+| `prefer` (default) | yes, if available | no | no |
+| `require` | yes | no | no |
+| `verify-ca` | yes | yes (CA must be trusted) | no |
+| `verify-full` | yes | yes | yes |
+
+`prefer` protects against passive sniffing only: it silently falls back to plaintext
+if TLS is unavailable. For production use `verify-full` (or at least `verify-ca`),
+make the CA available to the process (`~/.postgresql/root.crt` or a system trust
+store) and keep the configured `host` identical to the certificate name — otherwise
+the connection fails instead of downgrading. This server does not expose a CA path
+setting: use libpq's standard locations or `PGSSLROOTCERT` in the process environment.
+
+---
+
+### SSH reliability: retries and tunnels
+
+SSH command execution retries **connection-level** failures and reconnects (E1):
+
+| Key | Where | Default | Meaning |
+|---|---|---|---|
+| `retry_attempts` | `hosts.<name>` / `plugins.<plugin>.ssh` | `2` | total attempts; `1` disables retries |
+| `retry_backoff_seconds` | same | `0.5` | base pause, grows linearly (× attempt number) |
+
+Only connection errors (`SSHException`, `EOFError`, `OSError`, `ConnectionError`) are
+retried. A non-zero command exit code is a normal result and is never retried, so
+read-only diagnostics stay idempotent and predictable.
+
+PostgreSQL can be reached through an SSH server (E2), which helps when the database is
+only reachable from a bastion:
+
+```yaml
+plugins:
+  postgres:
+    host: db.internal      # resolved on the SSH side
+    port: 5432
+    ssh:
+      host: bastion        # SSH server to tunnel through
+      username: ops
+      key_file: ~/.ssh/id_rsa
+      tunnel: true         # opt-in; requires ssh.host
+```
+
+The plugin opens an ephemeral `127.0.0.1:<port>` listener and forwards it to
+`db.internal:5432` through the SSH connection; the tunnel is closed on plugin
+`destroy()`. Redis does not need this: its tools run `redis-cli` on the remote host
+over SSH. Note that with a tunnel, TLS hostname verification (`verify-full`) applies to
+the tunnel address, so prefer `verify-ca` with a trusted CA.
+
+End-to-end verification of a tunnel requires a real SSH server; it is not covered by CI
+(unit tests use a fake transport and cover the forwarding and wiring paths).
 
 ---
 
@@ -367,9 +434,9 @@ separately and are not rate limited. Rejected calls are not audited.
 
 SecurityGuard provides:
 - **Read-only mode**: Command validation blocks write commands (rm, write, mkfs, dd
-  and others) for command-executing adapters and tools. This is not a blanket
-  enforcement for every state-changing operation: non-command paths, such as
-  Docker prune, do not consult `readonly` and rely on their own `confirm` gate.
+  and others) for command-executing adapters and tools. Non-command write paths are
+  also covered: `docker_prune` refuses to delete while `readonly: true` (the
+  `confirm` gate is an additional, independent barrier).
 - **Dangerous command blocking**: rm -rf /, mkfs, dd if=/dev/zero, fork bombs etc.
 - **Output size limiting**: Truncates large command outputs
 - **Log line limiting**: Maximum number of log lines returned

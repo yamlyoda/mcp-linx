@@ -87,7 +87,8 @@ class PluginManager:
 
     Поддерживает:
     - Автообнаружение плагинов
-    - Фильтрацию по enabled в конфиге
+    - Фильтрацию по `plugins.enabled` в конфиге: активный набор плагинов
+      (загрузка, инициализация, tools, health check, destroy)
     - Управление жизненным циклом
     """
 
@@ -96,15 +97,38 @@ class PluginManager:
         self._plugins: dict[str, DiagnosticPlugin] = {}
         self._initialized = False
 
+    def _enabled_ids(self) -> set[str] | None:
+        """ID плагинов из `plugins.enabled`.
+
+        Возвращает None, если ограничений нет (ключ отсутствует или пуст) —
+        в этом случае активны все зарегистрированные плагины.
+        """
+        plugins_cfg = self._config.get("plugins", {})
+        if not isinstance(plugins_cfg, dict):
+            return None
+        enabled = plugins_cfg.get("enabled", [])
+        if not enabled:
+            return None
+        return set(enabled)
+
     def load_plugins(self) -> None:
-        """Загрузить все зарегистрированные плагины."""
+        """Загрузить плагины, включённые в `plugins.enabled` (пусто = все)."""
+        enabled_ids = self._enabled_ids()
+
         for plugin_id, plugin_class in PLUGIN_REGISTRY.items():
+            if enabled_ids is not None and plugin_id not in enabled_ids:
+                continue
             try:
                 plugin = plugin_class()
                 self._plugins[plugin_id] = plugin
                 logger.info(f"Plugin loaded: {plugin_id}")
             except Exception as e:
                 logger.error(f"Failed to load plugin {plugin_id}: {e}")
+
+        if enabled_ids is not None:
+            unknown = sorted(enabled_ids - set(PLUGIN_REGISTRY))
+            if unknown:
+                logger.warning(f"plugins.enabled references unknown plugin ids: {unknown}")
 
     def get_plugin(self, plugin_id: str) -> DiagnosticPlugin | None:
         """Получить плагин по ID."""
@@ -115,14 +139,14 @@ class PluginManager:
         return list(self._plugins.values())
 
     def get_enabled_plugins(self) -> list[DiagnosticPlugin]:
-        """Получить только включенные плагины согласно конфигурации."""
-        enabled_ids = set(self._config.get("plugins", {}).get("enabled", []))
-        if not enabled_ids:
+        """Получить только включённые плагины согласно конфигурации."""
+        enabled_ids = self._enabled_ids()
+        if enabled_ids is None:
             return list(self._plugins.values())
         return [p for pid, p in self._plugins.items() if pid in enabled_ids]
 
     async def initialize_all(self) -> None:
-        """Инициализировать все включенные плагины."""
+        """Инициализировать все включённые плагины."""
         if self._initialized:
             return
 

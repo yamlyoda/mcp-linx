@@ -12,7 +12,7 @@
   создан `AGENTS.md` + `docs/INDEX.md`. Гейт: **114 passed, 2 skipped**.
 - 2026-09-16 (волна 1): D1 ✅ / D4 ✅ / D5 ✅ (docs-only), C1 🟡 частично (authors; LICENSE/py.typed открыты).
 - 2026-09-16 (волна 2, код): A1 ✅ / A2 ✅ (`_main_async` + `stop_event` + тест), A5 ✅ / A6 ✅ (docs-only).
-- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:44-47` + 2 теста).
+- 2026-09-16 (волна 3, код): A4 ✅ (`_expand_env_vars` в `load_config` + 4 теста) / A3 ✅ (wire-up `validate_host` в linux/nginx/systemd до `_resolve_adapter`; семантика `hosts:` vs `allowed_hosts` в `settings.yaml:44-46` + 2 теста).
   A7 ✅ / A10 ✅ (закрыты 2026-09-17 — чистка, см. ниже), A9 ✅ (rate-limit жив и задокументирован).
 - 2026-09-17 (волна 3, доводка A9 CLOSED): `SecurityGuard.apply_timeout()` **удалён** (мёртвая заглушка, 0 вызовов); тезис аудита про «бессмысленные `# nosec` B507/B601» **опровергнут** probe'ом (аннотации load-bearing, bandit-WARNING ложный); `command_timeout_seconds` проведён **в дефолты плагинов** (`SecurityGuard.command_timeout` → `DiagnosticPlugin.command_timeout` → `timeout = self.command_timeout` в `_run*` 6 плагинов; explicit per-tool timeout перекрывает). Тесты: `tests/unit/test_command_timeout.py` (+15).
 - Гейт волны 3: **135 passed, 2 skipped**; `ruff check` / `ruff format --check` / `mypy` / `bandit` зелёные (bandit = 0 issues; 4 WARNING про nosec — ложные).
@@ -33,13 +33,51 @@
   вместе с кодом. Поправка A8: +6 unit, не +11 (смешивались unit и full).
   Прогон `pytest tests/ -q`: 215 passed, 2 skipped (терминальный wrapper сообщил
   ошибку завершения; итог pytest сохранён в логе). Runtime-код в этой задаче не менялся.
-- 2026-09-17 (D6 ✅, docs/code): уточнены plugins.enabled (инициализация, не фильтр tools),
-  границы readonly/rate-limit, env-настройки запуска, streaming, путь нового плагина.
+- 2026-09-17 (D6 ✅, docs/code): уточнены plugins.enabled (**пересмотрено в wave 6**:
+  теперь это настоящий фильтр, а не init-only), границы readonly/rate-limit,
+  env-настройки запуска, streaming, путь нового плагина.
   В src изменён только docstring DockerPlugin.prune_containers. Full pytest:
   215 passed, 2 skipped, PYTEST_EXIT=0; терминальная обёртка ошибается при закрытии.
   Ruff/format изменённого файла и mypy src — OK. Runtime-поведение не менялось.
+- 2026-09-18 (волна 6 ✅, код+docs): `plugins.enabled` = активный набор плагинов.
+  `PluginManager._enabled_ids()` + фильтр в `load_plugins()` → `get_tools()`,
+  `health_check_all()`, `destroy_all()` автоматически работают по активному набору
+  (раньше tools/health шли по всем, и tools исключённого плагина падали
+  `RuntimeError: Plugin not initialized`). Неизвестный id в списке → warning.
+  Удалены мёртвые ключи: секция `environment:` (mode/debug), `telemetry.log_level`
+  и 10 per-plugin `enabled: true` (код их не читал). Новый
+  `tests/unit/test_plugin_manager.py` (+11) с изоляцией `PLUGIN_REGISTRY` и тестом
+  синхронности `settings.yaml::plugins.enabled` ↔ реестр. Docs: settings.yaml,
+  README EN/RU, ARCHITECTURE, DEVELOPMENT.
+  Гейт: **226 passed, 2 skipped, PYTEST_EXIT=0**; ruff check/format, mypy, bandit —
+  зелёные; YAML-валидация и `git diff --check` — OK. Поведение: без `enabled` —
+  10 плагинов/56 tools, с `enabled: [linux]` — 1 плагин/8 tools (было 10/56).
 
-- Открыты: E1/E2 (+E3/E4/E5), C1-остаток (LICENSE/статус Alpha), Docker FROM digest; полный integration и Python 3.12/3.13 ждут CI.
+- 2026-09-18 (волны 7–10 ✅, код+docs): **релиз** — `LICENSE` (MIT) + PEP 639
+  (`license = "MIT"`, `license-files`; classifier лицензии убран), статус Alpha в README,
+  Dockerfile `FROM` по digest (оба стейджа), coverage unit **62.27% → 66.06%**, CI-гейт
+  60 → **65**, локальный прогон на **Python 3.12: 245 passed** (3.13 недоступен).
+  **docs** — `HARNESS_ANALYSIS.md` → `docs/`, `docs/INDEX.md` счётчики + тест-страж
+  `tests/unit/test_docs_index.py`, раздел «PostgreSQL SSL modes» (README EN/RU),
+  SECURITY.md: три «Critical Issues» помечены FIXED с проверкой по коду.
+  **security** — `SecurityGuard.readonly` + `DockerPlugin.prune_containers` бросает
+  `SecurityError` при readonly (A12); отказы rate-limit аудируются (A13); граница
+  доверия stdio задокументирована (D7).
+  **фичи** — E1 `exec_command_with_retry` (+`retry_params`, `SSHConnectionPool.drop`);
+  E2 `SSHTunnel` (`direct-tcpip`) + wiring в `PostgresPlugin` (`ssh.tunnel: true`).
+  Новые тесты: `test_adapters_local` (12), `test_context_compactors` (12),
+  `test_docs_index` (3), `test_ssh_retry` (12), `test_ssh_tunnel` (7),
+  `test_postgres_tunnel` (6), `TestDockerPruneReadonly` (6), `test_plugin_manager` (11).
+  Гейт последней волны: **284 passed, 2 skipped, PYTEST_EXIT=0**; coverage unit
+  **67.74%** при гейте 65 (279 unit-тестов); Python 3.12 — 279 passed, exit 0;
+  ruff check/format, mypy, bandit — зелёные; YAML/tomllib, markdown-fences,
+  `git diff --check` — OK. Integration не перезапускался: изменённые слои
+  (docker-prune/readonly, SSH retry/tunnel, audit) покрыты unit-тестами и не
+  пересекаются с `tests/integration/`.
+
+- Открыты: **E3** (jump host), **E4** (multi-host для API-плагинов), **E5** (`asyncssh`),
+  сквозная проверка E2 на реальном SSH-сервере, Python 3.13 и полный integration в CI,
+  F#8-остаток (docker prune формулировки в skills уже поправлены).
 
 ## 1. Карта репо
 
@@ -61,11 +99,12 @@ tests/unit/ (conftest.make_plugin — общий хелпер моков) + inte
 ```
 
 `src/` — ~7.4k строк / 37 файлов. Самый большой: `context_aggregator.py` (433).
-Документация: `README.md` (372 строки, EN — канон) + `README.ru.md` (371, RU),
-`CHANGELOG.md` (архив фаз, append-only),
+Документация: `README.md` (EN — канон) + `README.ru.md` (RU),
+`CHANGELOG.md` (архив фаз, append-only), `LICENSE` (MIT),
 `TODO.md` (живой бэклог A–G + волны), `SECURITY.md`, `REMOTE_TROUBLESHOOTING.md`,
-`HARNESS_ANALYSIS.md`, `docs/` (ARCHITECTURE, DEVELOPMENT, SKILLS, INCIDENT_504, skills/).
-Навигация по докам — `docs/INDEX.md` (что где, когда читать).
+`docs/` (ARCHITECTURE, DEVELOPMENT, SKILLS, INCIDENT_504, HARNESS_ANALYSIS, skills/).
+Навигация по докам — `docs/INDEX.md` (что где, когда читать; счётчики строк
+проверяются тестом `tests/unit/test_docs_index.py`).
 
 ## 2. Команды (venv проекта; глобальный python НЕ использовать)
 
@@ -100,8 +139,14 @@ trivy image mcp-linx:ci --format json --severity HIGH,CRITICAL --ignore-unfixed 
   не поддерживаются сознательно — `env_prefix` не вводим (A10 ✅). Креды плагинов —
   `${VAR}` / `${VAR:-default}` в `settings.yaml` (`load_config` → `_expand_env_vars`, A4 ✅;
   fail-open: нет переменной и нет default → warning + сырой текст). Поля `plugins` нет (A10 ✅).
+- `plugins.enabled` — ЕДИНСТВЕННЫЙ переключатель состава плагинов (wave 6 ✅):
+  фильтрует загрузку (`PluginManager.load_plugins` → `get_tools`/`health_check_all`/
+  `destroy_all`). Пусто/нет ключа = все обнаруженные. Per-plugin `enabled: true`
+  и секция `environment:`/`telemetry.log_level` УДАЛЕНЫ (мёртвые). Неизвестный id
+  в списке → WARNING. Тест синхронности: `tests/unit/test_plugin_manager.py`.
 - `validate_host()` вызывается в linux/nginx/systemd ДО `_resolve_adapter` (A3 ✅;
-  семантика `hosts:` vs `allowed_hosts` — `settings.yaml:44-47`); graceful shutdown
+  семантика `hosts:` vs `allowed_hosts` — см. `config/settings.yaml`, ключ
+  `security.allowed_hosts`); graceful shutdown
   живой: `_main_async` + `stop_event` (A2 ✅); `audit_log_file` по дефолту
   `/var/log/mcp-linx/audit.log` — в контейнере неписуемо, `AuditLogger` деградирует
   в stderr-warn (A6 ✅).

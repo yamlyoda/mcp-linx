@@ -112,8 +112,10 @@ class DiagnosticPlugin(ABC):
 Server name and loop selection use `MCP_SERVER_NAME` and `AGENT_LOOP` in the
 process environment or server `.env`, not top-level YAML keys. See
 [Environment and configuration](DEVELOPMENT.md#environment-and-configuration).
-`plugins.enabled` selects initialization only: tools and health checks currently
-include all loaded plugins. It is not an access-control boundary.
+`plugins.enabled` selects the active plugin set: only listed plugins are loaded,
+initialized, expose MCP tools, and participate in health checks (`load_plugins()`
+applies the filter). An absent or empty list means all discovered plugins. It is
+configuration of composition, not an access-control boundary.
 
 ```yaml
 security:
@@ -158,9 +160,9 @@ plugins:
 
 - **Read-only mode** — command-level validation: `SecurityGuard.validate_command`
   rejects write commands for command-executing adapters and tools
-  (`linux_execute_command`, privileged probes). This is not a blanket blocking of
-  every state-changing operation: non-command paths such as Docker prune do not
-  consult `readonly` and rely on their own `confirm` gate.
+  (`linux_execute_command`, privileged probes). Non-command write paths consult the
+  same flag directly: `DockerPlugin.prune_containers` refuses to run while
+  `security.readonly` is true, with its own `confirm` gate as a second barrier.
 - **Command validation** — whitelist + dangerous pattern detection
 - **Output limiting** — prevents memory exhaustion
 - **Host validation** — allowlist for remote hosts
