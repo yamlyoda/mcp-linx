@@ -375,7 +375,7 @@ mcp-linx/
 ├── src/mcp_linx/
 │   ├── main.py               # MCP server entry point (FastMCP + AgentLoop)
 │   ├── harness/              # Harness core: agent_loop, plugin_manager (auto-discovery),
-│   │                         #   sandbox, context (compaction)
+│   │                         #   context (compaction library API)
 │   ├── multihost.py          # HostRegistry — named remote hosts (`hosts:` config)
 │   ├── context_aggregator.py # Cross-component correlations
 │   ├── security.py           # SecurityGuard (command validation, readonly mode)
@@ -405,7 +405,7 @@ mcp-linx/
 ```
 
 Key features:
-- **Harness ideology**: diagnostic plugins are auto-discovered from `src/mcp_linx/plugins/`; agent loops, sandboxes and context compactors are separate harness components.
+- **Harness ideology**: diagnostic plugins are auto-discovered from `src/mcp_linx/plugins/`; agent loops are selectable via `AGENT_LOOP` and context compactors are provided as a library API. Sandboxes are not part of the server (see `docs/HARNESS_ANALYSIS.md`).
 - **Security**: readonly mode blocks write commands (rm, mkfs, dd, fork bombs, etc.)
 - **Context Aggregator**: detects cross-component correlations
 - **Adapters**: Local subprocess, SSH (paramiko), Docker API

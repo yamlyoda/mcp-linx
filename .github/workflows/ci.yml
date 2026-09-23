@@ -39,7 +39,7 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Unit tests + coverage gate
         # B3: line + branch coverage; порог повышаем вместе с тестами.
-        run: pytest tests/unit -q --cov=mcp_linx --cov-report=term-missing --cov-fail-under=65
+        run: pytest tests/unit -q --cov=mcp_linx --cov-report=term-missing --cov-fail-under=72
       - name: Import / discovery check
         run: |
           python -c "

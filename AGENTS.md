@@ -75,9 +75,24 @@
   (docker-prune/readonly, SSH retry/tunnel, audit) покрыты unit-тестами и не
   пересекаются с `tests/integration/`.
 
-- Открыты: **E3** (jump host), **E4** (multi-host для API-плагинов), **E5** (`asyncssh`),
-  сквозная проверка E2 на реальном SSH-сервере, Python 3.13 и полный integration в CI,
-  F#8-остаток (docker prune формулировки в skills уже поправлены).
+- 2026-09-18 (волна 11 ✅, чистка+решения): удалён мёртвый `harness/sandbox.py`
+  (208 строк, 0 вызовов, только реэкспорт) → `harness/__init__.py`, `HARNESS_ANALYSIS`
+  (раздел 3 = «отклонено», Фазы 1/2/4 актуализированы, оценка 35% → ~65%),
+  `ARCHITECTURE`, `DEVELOPMENT`, README EN/RU, AGENTS §1. Компакторы контекста
+  оставлены осознанным резервом (C12: библиотечный API, ключи конфига не вводим).
+  E5 `asyncssh` закрыт как **WON'T DO NOW** с обоснованием (TODO, REMOTE #7);
+  C7 → no-op; убрана неточность «F#8-остаток» (F#8 закрыт ранее).
+- 2026-09-18 (волна 12 ✅, тесты): покрытие unit **68.67% → 75%**, CI-гейт **65 → 72**.
+  Новые файлы: `test_agent_loop_lifecycle.py` (+18; `agent_loop` 47% → 96% —
+  `setup`/`run`/`shutdown`, системные tools, seed контекста, инжект `HostRegistry`),
+  `test_main_startup.py` (+5; `main.py` 80% → 100% — старт сервера, cleanup в `finally`,
+  ветка «сервер завершился первым», sync entrypoint), `test_observability_tools.py`
+  (+24; `loki` 19% → 92%, `prometheus` 19% → 89%). Найдена и подтверждена ловушка
+  `import mcp_linx.main as m` (возвращает функцию) — в тесте модуль берётся через
+  `importlib.import_module`. Доки не менялись (только `TODO`/`AGENTS` + CI-гейт).
+
+- Открыты: **E3**, **E4**, сквозная проверка E2 на реальном SSH, Python 3.13 и
+  полный integration в CI.
 
 ## 1. Карта репо
 
@@ -93,7 +108,7 @@ src/mcp_linx/
 ├── plugins/                # base.py + 10 плагинов: linux nginx docker postgres
 │                           #   redis systemd netdiag kubernetes prometheus loki
 │                           #   каждый: __init__.py + tools.py
-└── harness/                # agent_loop.py context.py sandbox.py plugin_manager.py
+└── harness/                # agent_loop.py context.py plugin_manager.py
 config/settings.yaml        # дефолтный конфиг (CONFIG_PATH переопределяет)
 tests/unit/ (conftest.make_plugin — общий хелпер моков) + integration/   # integration требует Docker
 ```

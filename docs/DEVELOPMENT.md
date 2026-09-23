@@ -34,8 +34,7 @@ mcp-linx/
 │   ├── harness/           # Harness module
 │   │   ├── agent_loop.py
 │   │   ├── plugin_manager.py
-│   │   ├── sandbox.py
-│   │   └── context.py
+│   │   └── context.py     # ContextCompactor library API (not wired into the server)
 │   ├── plugins/           # Diagnostic plugins (base.py defines `host` resolution)
 │   │   ├── base.py
 │   │   ├── linux/ nginx/ docker/

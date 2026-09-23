@@ -141,10 +141,14 @@
   - Связано с A4 ✅; остаток env-документации — D2 (секция в `docs/DEVELOPMENT.md`).
 - [x] **C5 (FIXED 2026-09-17). `[project.urls]`:** Homepage/Repository/Issues добавлены в `pyproject.toml`, проверены в метаданных собранного пакета.
 - [x] **C6 (FIXED 2026-09-18).** `HARNESS_ANALYSIS.md` перенесён в `docs/HARNESS_ANALYSIS.md`; ссылки обновлены в `docs/INDEX.md` и `AGENTS.md`. В корне остались только README EN/RU, TODO, CHANGELOG, SECURITY, REMOTE_TROUBLESHOOTING, AGENTS, LICENSE.
-- [ ] **C7.** `diagnosis_state.md` — корректно в `.gitignore` («креды, kept local only»), **не трогать**.
+- [x] **C7 (no-op, 2026-09-18).** `diagnosis_state.md` — корректно в `.gitignore` («креды, kept local only»). Проверок не требует; задача закрыта как «не трогать», чтобы не выглядела открытой.
 - [x] **C8 (FIXED 2026-09-18). Docker `FROM` без digest.** Оба стейджа запинены: `python:3.11-slim@sha256:9534e5a8…`; в Dockerfile добавлен комментарий, как обновлять digest (`docker buildx imagetools inspect`). Сборка образа с пином — OK.
-- [x] **C9 (FIXED 2026-09-18). Coverage-гейт и Python 3.12.** Добавлены `tests/unit/test_adapters_local.py` (+12) и `tests/unit/test_context_compactors.py` (+12): покрытие unit **62.27% → 66.06%**, CI-гейт поднят 60 → **65**. Полный unit-набор прогнан локально на **Python 3.12** (`245 passed`) — ранее 3.12/3.13 проверялись только в CI (3.13 локально недоступен).
+- [x] **C9 (FIXED 2026-09-18, поднято в волне 12). Coverage-гейт и Python 3.12.** Добавлены `tests/unit/test_adapters_local.py` (+12) и `tests/unit/test_context_compactors.py` (+12): покрытие unit **62.27% → 66.06%**, CI-гейт 60 → 65. Полный unit-набор прогнан локально на **Python 3.12** (`245 passed`) — ранее 3.12/3.13 проверялись только в CI (3.13 локально недоступен).
+  - Волна 12 продолжила работу: `test_agent_loop_lifecycle.py` (+18, agent_loop 47% → 96%), `test_main_startup.py` (+5, main.py 80% → 100%), `test_observability_tools.py` (+24, loki 19% → 92%, prometheus 19% → 89%). Итог: **67.74% → 75%**, CI-гейт **65 → 72**.
+- [x] **C13 (FIXED 2026-09-18, волна 12). Провалы покрытия в критичных модулях закрыты.** `harness/agent_loop.py` (47% → 96%: setup/run/shutdown, системные tools, seed контекста), `main.py` (80% → 100%: старт сервера, ветка завершения, sync entrypoint), `plugins/loki|prometheus/tools.py` (19% → 92%/89%: HTTP-успехи, HTTP-ошибки, degraded-ветки, валидация, transport-исключения). Остаются непокрытыми: `plugins/docker|kubernetes|postgres/tools.py` (28-29%), `netdiag|redis` (45%), `linux` (56%), `nginx` (68%) — кандидаты на следующую итерацию; гейт 72 допускает их текущий уровень.
 - [x] **C10 (FIXED 2026-09-18). `docs/INDEX.md` расходился с файлами.** Счётчики строк обновлены по факту; добавлен тест-страж `tests/unit/test_docs_index.py`, который падает при дрейфе (сообщает актуальные значения).
+- [x] **C11 (FIXED 2026-09-18). Мёртвый `harness/sandbox.py` удалён.** Модуль (`Sandbox` / `LocalSandbox` / `DockerSandbox` / `RemoteSandbox`, 208 строк) не вызывался ни из `agent_loop`, ни из плагинов — только реэкспорт в `harness/__init__.py`. Удалён вместе с реэкспортом; статусы приведены к факту в `docs/HARNESS_ANALYSIS.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, README EN/RU, AGENTS §1. Изоляция команд обеспечивается моделью запуска контейнера и `SecurityGuard` (обоснование — HARNESS_ANALYSIS §3).
+- [x] **C12 (FIXED 2026-09-18, решение). Компакторы контекста — осознанный резерв, не мёртвый код.** `harness/context.py` (`ContextCompactor` + 3 реализации) экспортируется и покрыт тестами, но в `agent_loop` не подключён: сервер не хранит историю диалога — её ведёт MCP-клиент. Ключи конфига для компакции **не вводим**, пока нет потребителя (иначе это были бы мёртвые ключи). Решение зафиксировано в `docs/HARNESS_ANALYSIS.md` (Фаза 4).
 
 <a name="D"></a>
 ### D. Документация (следует за фиксами кода)
@@ -175,7 +179,9 @@
   - Остаток: сквозная проверка на реальном SSH-сервере (в CI не покрыта) — задокументировано в README и REMOTE_TROUBLESHOOTING.
 - [ ] **E3 (Medium).** Jump host / bastion (paramiko proxy channel, REMOTE_TROUBLESHOOTING #5).
 - [ ] **E4.** Multi-host для API-плагинов (k8s через SSH + `kubectl`, PostgreSQL через туннель) — требует отдельной оценки объёма.
-- [ ] **E5 (High).** Переход на `asyncssh` вместо `run_in_executor` (REMOTE_TROUBLESHOOTING #7) — не рекомендуется в ближайшую итерацию.
+- [x] **E5 (⏸ WON'T DO NOW, 2026-09-18).** Переход на `asyncssh` вместо `run_in_executor`.
+  - **Решение:** не делаем. Практические потребности закрыты: E1 (retry + reconnect) и E2 (туннель) реализованы поверх paramiko; `run_in_executor` не является бутылочным горлышком для диагностических команд (короткие, read-only). Миграция затронула бы весь SSH-слой (пул, туннель, retry) и потребовала бы нового цикла проверки на реальном SSH.
+  - **Условие пересмотра:** высокая конкурентность SSH-вызовов (десятки параллельных сессий) или требование нативной async-отмены. До этого — задокументированный отказ, а не открытый пункт.
 
 <a name="F"></a>
 ### F. Ревизия прежних пунктов «Recommended Next Steps»

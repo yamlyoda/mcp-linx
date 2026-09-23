@@ -74,8 +74,7 @@ class DiagnosticPlugin(ABC):
 |-----------|------|-------------|
 | `AgentLoop` | Plugin | Controls MCP server operation |
 | `PluginManager` | Core | Auto-discovers and manages plugins |
-| `Sandbox` | Plugin | Isolated execution environment |
-| `ContextCompactor` | Plugin | Manages conversation history |
+| `ContextCompactor` | Library | Conversation-history compaction (exported, not wired into the server: the MCP client owns history) |
 | `Adapter` | Plugin | Connectivity to environments |
 
 ## Available Plugins
@@ -97,15 +96,14 @@ class DiagnosticPlugin(ABC):
 - `agent_loop` injects the registry into every plugin (`plugin.hosts`) at startup and closes all connections on shutdown (`HostRegistry.close_all()`)
 - Tools of `linux`, `nginx` (except `nginx_stub_status`) and `systemd` accept a `host` argument (a registry name) and route the command through `_resolve_adapter(host)`; omitting `host` uses the plugin's primary adapter
 
-### Sandboxes
-- `LocalSandbox` — Local execution
-- `DockerSandbox` — Docker container isolation
-- `RemoteSandbox` — SSH remote host
-
 ### Context Compactors
-- `SlidingWindowCompactor` — Keep last N messages
-- `TokenLimitCompactor` — Limit by token count
-- `SummaryCompactor` — Summarize old messages
+- `SlidingWindowCompactor` — keeps the last N messages (library API, not wired into the server)
+- `TokenLimitCompactor` — drops oldest messages until a token estimate fits
+- `SummaryCompactor` — replaces older messages with a summary marker
+
+> **Sandboxes are intentionally absent**: `harness/sandbox.py` was removed on
+> 2026-09-18 as dead code (never called; only re-exported). Command isolation is
+> provided by the container run models and `SecurityGuard` instead.
 
 ## Configuration
 
@@ -154,7 +152,7 @@ plugins:
 | New Plugin | Create `src/mcp_linx/plugins/my_plugin/` with `__init__.py` and `tools.py` |
 | New Adapter | Extend `BaseAdapter`, implement required methods |
 | New Agent Loop | Extend `AgentLoop`, register in `get_agent_loop()` |
-| New Sandbox | Extend `Sandbox`, implement `execute()` and `is_available()` |
+| New Sandbox | Not planned: `harness/sandbox.py` was removed as dead code (2026-09-18); isolation comes from the container run models |
 
 ## Security
 

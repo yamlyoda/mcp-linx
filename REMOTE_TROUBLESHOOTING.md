@@ -127,10 +127,17 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 ---
 
-### 7. Async SSH Library (PERFORMANCE)
+### 7. Async SSH Library (PERFORMANCE) — ⏸ WON'T DO NOW (2026-09-18)
+
 **Problem**: `paramiko` is synchronous, using `run_in_executor` which blocks threads.
 
-**Solution**: Consider `asyncssh` for native async support.
+**Decision**: not planned. E1 (retry/reconnect) and E2 (tunnel) are implemented on top of
+paramiko, and diagnostic commands are short and read-only, so the executor is not a
+bottleneck. An `asyncssh` migration would rewrite the whole SSH layer (pool, tunnel,
+retry) and require a fresh real-SSH verification cycle.
+
+**Revisit if**: SSH concurrency grows to dozens of parallel sessions, or native async
+cancellation becomes a requirement.
 
 ---
 
@@ -160,7 +167,7 @@ no jitter/circuit breaker.
 | P1 | Host key verification | Low | ✅ FIXED |
 | P1 | Connection health monitoring | Low | 🟡 PARTIAL (keepalive + dead-client reconnect + retry done; metrics/probes open) |
 | P2 | Jump host support | Medium | TODO |
-| P2 | Async SSH library | High | TODO |
+| P2 | Async SSH library | High | ⏸ WON'T DO NOW (paramiko + retry/tunnel sufficient; revisit on high concurrency) |
 | P2 | Retry logic | Low | ✅ FIXED (2026-09-18; E1) |
 | P3 | Connection manager pattern | High | TODO |
 

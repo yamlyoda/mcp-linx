@@ -372,7 +372,7 @@ mcp-linx/
 ├── src/mcp_linx/
 │   ├── main.py               # Точка входа MCP сервера (FastMCP + AgentLoop)
 │   ├── harness/              # Ядро Harness: agent_loop, plugin_manager (автообнаружение),
-│   │                         #   sandbox, context (компакция)
+│   │                         #   context (компакция — библиотечный API)
 │   ├── multihost.py          # HostRegistry — именованные удалённые хосты (`hosts:`)
 │   ├── context_aggregator.py # Корреляции между компонентами
 │   ├── security.py           # SecurityGuard (валидация команд, readonly режим)
