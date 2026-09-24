@@ -177,8 +177,13 @@
   - `SSHTunnel` (`adapters/ssh_pool.py`) — локальный форвард `direct-tcpip` на потоковом `ThreadingTCPServer`; `PostgresPlugin._maybe_start_tunnel()` включается при `plugins.postgres.ssh.tunnel: true` (требует `ssh.host`), подключение идёт на локальный адрес туннеля, `destroy()` останавливает туннель и закрывает пул. Redis не нуждается в туннеле (команды `redis-cli` по SSH).
   - Тесты: `tests/unit/test_ssh_tunnel.py` (+7, реальная перекачка байт через фейковый транспорт), `tests/unit/test_postgres_tunnel.py` (+6, wiring и deny/fail-fast).
   - Остаток: сквозная проверка на реальном SSH-сервере (в CI не покрыта) — задокументировано в README и REMOTE_TROUBLESHOOTING.
-- [ ] **E3 (Medium).** Jump host / bastion (paramiko proxy channel, REMOTE_TROUBLESHOOTING #5).
-- [ ] **E4.** Multi-host для API-плагинов (k8s через SSH + `kubectl`, PostgreSQL через туннель) — требует отдельной оценки объёма.
+- [x] **E3 (FIXED 2026-09-18).** Jump host / bastion (paramiko proxy channel, REMOTE_TROUBLESHOOTING #5).
+  - `SSHConnectionPool._connect`: при `jump_host` создаётся клиент бастиона, открывается `direct-tcpip` канал до цели (`_open_jump_channel`) и передаётся в целевой `connect(sock=...)`; `_jump_config` маппит ключи `jump_*` со наследованием `host_key_policy`/`known_hosts`; бастион хранится в `_jump_clients` и закрывается вместе с целью (`drop`/`close_all`).
+  - Тесты: `tests/unit/test_ssh_jump.py` (+9): два клиента, адрес канала, наследование политики, дефолт порта, отсутствие транспорта бастиона, очистка, переиспользование.
+  - Docs: README EN/RU (раздел «Jump host (bastion)»), `settings.yaml` (пример ключей), REMOTE #5.
+- [x] **E4a (FIXED 2026-09-18, docs+тесты).** Multi-cluster Kubernetes. Плагин работает с одним кластером на инстанс (`kubeconfig`/`context`); для нескольких — дополнительные инстансы с отдельным `CONFIG_PATH`. Аргумента выбора кластера у `k8s_*` намеренно нет. Раздел «Kubernetes multi-cluster» в README EN/RU + пример в `settings.yaml`.
+- [x] **E4b (FIXED 2026-09-18).** Multi-target PostgreSQL. `plugins.postgres.targets.<имя>` + параметр `host` у `pg_*`: свой коннект на таргет, при `ssh.tunnel: true` — свой туннель (E2), кэш соединений, закрытие в `destroy()`; неизвестный таргет → `KeyError` со списком настроенных. Тесты: `tests/unit/test_postgres_targets.py` (+11). Docs: README EN/RU (раздел «PostgreSQL multi-target»), `settings.yaml`.
+- [x] **E4 (закрыт 2026-09-18)** — разбит на E4a/E4b, оба выполнены.
 - [x] **E5 (⏸ WON'T DO NOW, 2026-09-18).** Переход на `asyncssh` вместо `run_in_executor`.
   - **Решение:** не делаем. Практические потребности закрыты: E1 (retry + reconnect) и E2 (туннель) реализованы поверх paramiko; `run_in_executor` не является бутылочным горлышком для диагностических команд (короткие, read-only). Миграция затронула бы весь SSH-слой (пул, туннель, retry) и потребовала бы нового цикла проверки на реальном SSH.
   - **Условие пересмотра:** высокая конкурентность SSH-вызовов (десятки параллельных сессий) или требование нативной async-отмены. До этого — задокументированный отказ, а не открытый пункт.

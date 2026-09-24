@@ -15,17 +15,21 @@ async def pg_stats(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
     try:
         results: dict[str, Any] = {}
 
-        db_stats = await plugin._execute_query("""
+        db_stats = await plugin._execute_query(
+            """
             SELECT
                 datname, pg_size_pretty(pg_database_size(datname)) AS size,
                 numbackends, xact_commit, xact_rollback,
                 tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted
             FROM pg_stat_database
             WHERE datname = current_database()
-        """)
+        """,
+            host=params.get("host"),
+        )
         results["database"] = db_stats
 
-        table_stats = await plugin._execute_query("""
+        table_stats = await plugin._execute_query(
+            """
             SELECT
                 schemaname, relname AS table_name,
                 n_live_tup, n_dead_tup, n_mod_since_analyze,
@@ -34,17 +38,22 @@ async def pg_stats(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
             FROM pg_stat_user_tables
             ORDER BY n_live_tup DESC
             LIMIT 20;
-        """)
+        """,
+            host=params.get("host"),
+        )
         results["tables"] = table_stats
 
-        index_stats = await plugin._execute_query("""
+        index_stats = await plugin._execute_query(
+            """
             SELECT
                 schemaname, relname AS table_name, indexrelname AS index_name,
                 idx_scan, idx_tup_read, idx_tup_fetch
             FROM pg_stat_user_indexes
             ORDER BY idx_scan DESC
             LIMIT 20;
-        """)
+        """,
+            host=params.get("host"),
+        )
         results["indexes"] = index_stats
 
         return ToolResult.ok(results)
@@ -56,7 +65,8 @@ async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
     """Статус репликации (если настроена)"""
     try:
         is_primary = await plugin._execute_query_one(
-            "SELECT pg_is_in_recovery() AS is_in_recovery;"
+            "SELECT pg_is_in_recovery() AS is_in_recovery;",
+            host=params.get("host"),
         )
 
         if is_primary and is_primary.get("is_in_recovery"):
@@ -65,7 +75,7 @@ async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
                    status, replication_lag_bytes, replication_lag_time
             FROM pg_stat_replication;
             """
-            status = await plugin._execute_query(replication_query)
+            status = await plugin._execute_query(replication_query, host=params.get("host"))
             return ToolResult.ok(
                 {"role": "standby", "replication_status": status, "is_in_recovery": True}
             )
@@ -76,7 +86,7 @@ async def pg_replication(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
                    sent_lag_bytes, write_lag_bytes, flush_lag_bytes, replay_lag_bytes
             FROM pg_stat_replication;
             """
-            status = await plugin._execute_query(replication_query)
+            status = await plugin._execute_query(replication_query, host=params.get("host"))
             return ToolResult.ok(
                 {"role": "primary", "replication_status": status, "is_in_recovery": False}
             )
@@ -97,7 +107,7 @@ async def pg_activity(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolRes
         ORDER BY query_start;
         """
 
-        activity = await plugin._execute_query(activity_query)
+        activity = await plugin._execute_query(activity_query, host=params.get("host"))
 
         total = len(activity)
         active = sum(1 for a in activity if a.get("state") == "active")
@@ -131,7 +141,7 @@ async def pg_connections(plugin: PostgresPlugin, params: dict[str, Any]) -> Tool
         ORDER BY query_start;
         """
 
-        connections = await plugin._execute_query(query)
+        connections = await plugin._execute_query(query, host=params.get("host"))
 
         total = len(connections)
         active = sum(
@@ -173,7 +183,7 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
         ORDER BY l.pid, l.mode;
         """
 
-        all_locks = await plugin._execute_query(locks_query)
+        all_locks = await plugin._execute_query(locks_query, host=params.get("host"))
 
         blocked_locks = [lock for lock in all_locks if not lock.get("granted")]
 
@@ -192,7 +202,9 @@ async def pg_locks(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResult
               AND l2.pid != %s
             LIMIT 1;
             """
-            blocking = await plugin._execute_query(blocking_query, (blocked["pid"],))
+            blocking = await plugin._execute_query(
+                blocking_query, (blocked["pid"],), host=params.get("host")
+            )
             if blocking:
                 blocking_info.append(
                     {
@@ -248,7 +260,7 @@ async def pg_tables(plugin: PostgresPlugin, params: dict[str, Any]) -> ToolResul
             LIMIT 50;
         """)
 
-        tables = await plugin._execute_query(query, (schema,))
+        tables = await plugin._execute_query(query, (schema,), host=params.get("host"))
 
         needs_vacuum = [
             t
@@ -285,7 +297,9 @@ async def pg_slow_queries(plugin: PostgresPlugin, params: dict[str, Any]) -> Too
         LIMIT %s;
         """
 
-        slow_queries = await plugin._execute_query(query, (threshold_ms, limit))
+        slow_queries = await plugin._execute_query(
+            query, (threshold_ms, limit), host=params.get("host")
+        )
 
         return ToolResult.ok(
             {

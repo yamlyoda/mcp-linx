@@ -108,10 +108,18 @@ Config options per SSH adapter (`config/settings.yaml`):
 
 ---
 
-### 5. Jump Host / Bastion Support (MEDIUM)
+### 5. Jump Host / Bastion Support (MEDIUM) — ✅ FIXED (2026-09-18)
 **Problem**: Enterprise environments often require connecting through a bastion host.
 
-**Solution**: Implement proxy command support using paramiko channel.
+**Implemented**: `SSHConnectionPool._connect` opens a `direct-tcpip` channel on the
+bastion and passes it to the target client via `connect(sock=...)`. Configured on a named
+host in `hosts:` — `jump_host` / `jump_port` / `jump_username` / `jump_key_file` /
+`jump_password` (see README → "Jump host (bastion)"). The bastion is verified with the
+same `host_key_policy` / `known_hosts` as the target and is closed together with it
+(`drop` / `close_all`).
+
+**Verification**: `tests/unit/test_ssh_jump.py` (fake paramiko: two clients, channel
+target/source, policy inheritance, cleanup).
 
 ---
 
@@ -166,7 +174,7 @@ no jitter/circuit breaker.
 | P1 | SSH tunnel for PostgreSQL | Low | ✅ FIXED (2026-09-18; E2) |
 | P1 | Host key verification | Low | ✅ FIXED |
 | P1 | Connection health monitoring | Low | 🟡 PARTIAL (keepalive + dead-client reconnect + retry done; metrics/probes open) |
-| P2 | Jump host support | Medium | TODO |
+| P2 | Jump host support | Medium | ✅ FIXED (2026-09-18; E3) |
 | P2 | Async SSH library | High | ⏸ WON'T DO NOW (paramiko + retry/tunnel sufficient; revisit on high concurrency) |
 | P2 | Retry logic | Low | ✅ FIXED (2026-09-18; E1) |
 | P3 | Connection manager pattern | High | TODO |

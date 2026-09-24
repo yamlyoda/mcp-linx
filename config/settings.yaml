@@ -21,6 +21,11 @@ hosts: {}
 #     password: null
 #     host_key_policy: reject   # reject | warning | auto_add
 #     known_hosts: null
+#     # E3 (бастион, опционально): сессия до target идёт через direct-tcpip канал
+#     # jump_host: bastion.example.com
+#     # jump_port: 22
+#     # jump_username: jumper
+#     # jump_key_file: ~/.ssh/jump
 #   db-1:
 #     host: 10.130.0.24
 #     username: user
@@ -126,6 +131,15 @@ plugins:
       username: null
       key_file: null
       tunnel: false        # true = поднять локальный порт-форвардинг (требует host)
+    # E4b (опционально): именованные таргеты — `pg_*` принимают `host: <имя>`.
+    # Каждый таргет получает свой коннект (и туннель при ssh.tunnel: true);
+    # неуказанные поля наследуются от настроек плагина выше.
+    # targets:
+    #   replica:
+    #     host: replica.db
+    #   behind-bastion:
+    #     host: internal.db
+    #     ssh: {host: bastion, tunnel: true}
 
   redis:
     host: "localhost"

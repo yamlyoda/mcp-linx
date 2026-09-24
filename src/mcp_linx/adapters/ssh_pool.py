@@ -30,6 +30,8 @@ class SSHConnectionPool:
         self._keepalive = keepalive_seconds
         self._connect_timeout = connect_timeout
         self._clients: dict[tuple[str, int, str | None], paramiko.SSHClient] = {}
+        # Bastion-клиенты для jump-хостов (E3): закрываются вместе с целевым.
+        self._jump_clients: dict[tuple[str, int, str | None], paramiko.SSHClient] = {}
         self._lock = threading.Lock()
 
     @staticmethod
@@ -62,7 +64,57 @@ class SSHConnectionPool:
         return transport is not None and transport.is_active()
 
     def _connect(self, config: dict[str, Any]) -> paramiko.SSHClient:
-        """Новое SSH-соединение (политики host key — как в SSHAdapter)."""
+        """Новое SSH-соединение (политики host key — как в SSHAdapter).
+
+        E3: если задан `jump_host`, соединение до цели открывается через
+        бастион — `direct-tcpip` канал передаётся в `connect(sock=...)`.
+        """
+        jump_host = config.get("jump_host")
+        sock: paramiko.Channel | None = None
+
+        if jump_host:
+            jump_client = self._new_client(self._jump_config(config, str(jump_host)))
+            self._jump_clients[self._key(config)] = jump_client
+            sock = self._open_jump_channel(jump_client, config)
+
+        return self._new_client(config, sock=sock)
+
+    @staticmethod
+    def _jump_config(config: dict[str, Any], jump_host: str) -> dict[str, Any]:
+        """Конфиг бастиона из ключей `jump_*` (E3).
+
+        Политика host key и known_hosts берутся из общего конфига хоста: бастион
+        проверяется теми же правилами, что и цель (дефолт — reject).
+        """
+        return {
+            "host": jump_host,
+            "port": config.get("jump_port", 22),
+            "username": config.get("jump_username"),
+            "key_file": config.get("jump_key_file"),
+            "password": config.get("jump_password"),
+            "host_key_policy": config.get("host_key_policy", "reject"),
+            "known_hosts": config.get("known_hosts"),
+        }
+
+    def _open_jump_channel(
+        self, jump_client: paramiko.SSHClient, config: dict[str, Any]
+    ) -> paramiko.Channel:
+        """Открыть `direct-tcpip` канал через бастион до цели (E3).
+
+        Raises:
+            RuntimeError: транспорт бастиона недоступен.
+        """
+        transport = jump_client.get_transport()
+        if transport is None:
+            raise RuntimeError("Jump host transport is not available")
+        target = (str(config.get("host", "localhost")), int(config.get("port", 22)))
+        # source-адрес — от имени бастиона; 0 = любой локальный порт
+        return transport.open_channel("direct-tcpip", target, ("127.0.0.1", 0))
+
+    def _new_client(
+        self, config: dict[str, Any], sock: paramiko.Channel | None = None
+    ) -> paramiko.SSHClient:
+        """Клиент с host-key policy, known_hosts и параметрами подключения."""
         client = paramiko.SSHClient()
 
         policy = str(config.get("host_key_policy", "reject")).lower()
@@ -99,6 +151,9 @@ class SSHConnectionPool:
             connect_kwargs["key_filename"] = str(config["key_file"])
         elif config.get("password"):
             connect_kwargs["password"] = config["password"]
+        if sock is not None:
+            # E3: подключение через уже открытый канал бастиона
+            connect_kwargs["sock"] = sock
 
         client.connect(**connect_kwargs)
 
@@ -113,16 +168,25 @@ class SSHConnectionPool:
             for client in self._clients.values():
                 with suppress(Exception):  # best-effort закрытие
                     client.close()
+            # E3: бастионы закрываем вместе с целевыми соединениями
+            for jump_client in self._jump_clients.values():
+                with suppress(Exception):
+                    jump_client.close()
             self._clients.clear()
+            self._jump_clients.clear()
 
     def drop(self, config: dict[str, Any]) -> None:
         """Выбросить соединение из пула (E1): следующий `get()` создаст новое."""
         key = self._key(config)
         with self._lock:
             client = self._clients.pop(key, None)
+            jump_client = self._jump_clients.pop(key, None)
         if client is not None:
             with suppress(Exception):  # best-effort закрытие
                 client.close()
+        if jump_client is not None:
+            with suppress(Exception):
+                jump_client.close()
 
 
 def exec_command_sync(client: paramiko.SSHClient, command: str, timeout: int) -> dict[str, Any]:

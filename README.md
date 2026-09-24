@@ -197,6 +197,61 @@ the tunnel address, so prefer `verify-ca` with a trusted CA.
 End-to-end verification of a tunnel requires a real SSH server; it is not covered by CI
 (unit tests use a fake transport and cover the forwarding and wiring paths).
 
+### Jump host (bastion)
+
+A named host can be reached through a bastion; the pool opens a `direct-tcpip` channel
+on the bastion and runs the SSH session to the target over it (E3):
+
+```yaml
+hosts:
+  db-1:
+    host: 10.0.0.20          # target, resolved on the bastion
+    username: ops
+    key_file: ~/.ssh/id_rsa
+    jump_host: bastion.example.com
+    jump_port: 22            # default 22
+    jump_username: jumper
+    jump_key_file: ~/.ssh/jump
+    # jump_password: use an env-substituted value, not a literal
+    host_key_policy: reject  # applies to both the bastion and the target
+```
+
+The bastion is verified with the same `host_key_policy` / `known_hosts` as the target
+(so `reject` needs both keys in `known_hosts`). The bastion connection is reused with the
+target and closed together with it (`drop` / `close_all`).
+
+### PostgreSQL multi-target
+
+Any `pg_*` tool accepts `host: <target name>`, where targets are described in the config
+(E4b). Each target gets its own connection, and — with `ssh.tunnel: true` — its own
+tunnel, so a primary and a replica behind a bastion can be diagnosed from one instance:
+
+```yaml
+plugins:
+  postgres:
+    host: primary.db           # used when a tool is called without `host`
+    port: 5432
+    user: postgres
+    password: "${POSTGRES_PASSWORD:-}"
+    targets:
+      replica:
+        host: replica.db
+      behind-bastion:          # reached through SSH (E2)
+        host: internal.db
+        ssh: {host: bastion, tunnel: true}
+```
+
+Unlisted fields are inherited from the plugin-level settings. An unknown target name
+returns an error listing the configured targets. Connections and tunnels are closed on
+plugin `destroy()`.
+
+### Kubernetes multi-cluster
+
+The Kubernetes plugin talks to one cluster per plugin instance, selected by
+`plugins.kubernetes.kubeconfig` / `context`. For several clusters run additional
+instances (separate `CONFIG_PATH`) or switch `context` — the `k8s_*` tools intentionally
+have no per-call cluster argument.
+
 ---
 
 ## Tools

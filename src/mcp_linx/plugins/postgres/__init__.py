@@ -31,6 +31,10 @@ class PostgresPlugin(DiagnosticPlugin):
         self._config: PluginConfig | None = None
         self._tunnel: SSHTunnel | None = None
         self._ssh_pool: SSHConnectionPool | None = None
+        # E4b: именованные таргеты (`plugins.postgres.targets.<имя>`) — свой
+        # коннект (и, при ssh.tunnel, свой туннель) на каждый таргет.
+        self._targets: dict[str, dict[str, Any]] = {}
+        self._target_state: dict[str, dict[str, Any]] = {}
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.postgres.tools import (
@@ -61,7 +65,71 @@ class PostgresPlugin(DiagnosticPlugin):
 
     async def initialize(self, config: PluginConfig) -> None:
         self._config = config
+        raw_targets = config.get("targets", {})
+        self._targets = (
+            {name: dict(cfg) for name, cfg in raw_targets.items() if isinstance(cfg, dict)}
+            if isinstance(raw_targets, dict)
+            else {}
+        )
         await self._connect_sync()
+
+    def _target_config(self, name: str) -> dict[str, Any]:
+        """Конфиг таргета: поля таргета поверх основных настроек плагина (E4b).
+
+        Raises:
+            KeyError: таргет не описан в `plugins.postgres.targets`.
+        """
+        if name not in self._targets:
+            available = ", ".join(sorted(self._targets)) or "<none configured>"
+            raise KeyError(f"Unknown PostgreSQL target '{name}'. Configured: {available}")
+        return {**(self._config or {}), **self._targets[name]}
+
+    async def _connection_for(self, host: str | None = None) -> Any:
+        """Соединение для таргета (`host`) или primary (E4b).
+
+        Соединения таргетов кэшируются: повторный вызов переиспользует коннект.
+        """
+        if not host:
+            if not self._conn:
+                await self._connect_sync()
+            return self._conn
+
+        name = str(host)
+        state = self._target_state.get(name)
+        if state is not None:
+            return state["conn"]
+
+        target_config = self._target_config(name)
+        conn = await self._connect_target(target_config)
+        self._target_state[name] = conn
+        return conn["conn"]
+
+    async def _connect_target(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Подключиться к таргету; при `ssh.tunnel` поднять туннель (E2/E4b)."""
+        host = config.get("host", "localhost")
+        port = int(config.get("port", 5432))
+        tunnel: SSHTunnel | None = None
+        pool: SSHConnectionPool | None = None
+
+        ssh = config.get("ssh", {})
+        if isinstance(ssh, dict) and ssh.get("tunnel"):
+            if not ssh.get("host"):
+                raise RuntimeError("ssh.tunnel requires ssh.host (SSH server to tunnel through)")
+            pool = SSHConnectionPool()
+            tunnel = SSHTunnel(pool.get(dict(ssh)), str(host), port)
+            tunnel.start()
+            host, port = tunnel.local_address
+
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            dbname=config.get("database", "postgres"),
+            user=config.get("user", "postgres"),
+            **({"password": config["password"]} if config.get("password") else {}),
+            **({"sslmode": config["ssl_mode"]} if config.get("ssl_mode") else {}),
+        )
+        conn.autocommit = True
+        return {"conn": conn, "tunnel": tunnel, "pool": pool}
 
     async def _connect_sync(self) -> None:
         """Синхронное подключение к PostgreSQL"""
@@ -141,15 +209,30 @@ class PostgresPlugin(DiagnosticPlugin):
         if self._ssh_pool is not None:
             self._ssh_pool.close_all()
             self._ssh_pool = None
+        # E4b: закрыть соединения/туннели всех таргетов
+        for state in self._target_state.values():
+            if state.get("conn") is not None:
+                with suppress(Exception):
+                    state["conn"].close()
+            if state.get("tunnel") is not None:
+                state["tunnel"].stop()
+            if state.get("pool") is not None:
+                state["pool"].close_all()
+        self._target_state.clear()
 
     async def _execute_query(
-        self, query: str, params: tuple[Any, ...] | None = None
+        self,
+        query: str,
+        params: tuple[Any, ...] | None = None,
+        host: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Выполнить SQL запрос и вернуть результат как список dict"""
-        if not self._conn:
-            await self._connect_sync()
+        """Выполнить SQL запрос и вернуть результат как список dict.
 
-        with self._conn.cursor() as cur:
+        `host` — имя таргета из `plugins.postgres.targets` (E4b); None = primary.
+        """
+        conn = await self._connection_for(host)
+
+        with conn.cursor() as cur:
             cur.execute(query, params)
 
             if cur.description:
@@ -159,8 +242,11 @@ class PostgresPlugin(DiagnosticPlugin):
             return []
 
     async def _execute_query_one(
-        self, query: str, params: tuple[Any, ...] | None = None
+        self,
+        query: str,
+        params: tuple[Any, ...] | None = None,
+        host: str | None = None,
     ) -> dict[str, Any] | None:
-        """Выполнить SQL запрос и вернуть одну строку"""
-        results = await self._execute_query(query, params)
+        """Выполнить SQL запрос и вернуть одну строку (`host` — таргет, E4b)."""
+        results = await self._execute_query(query, params, host=host)
         return results[0] if results else None
