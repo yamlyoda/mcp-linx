@@ -6,6 +6,25 @@
 
 ## 0. Статус сессии (обновлять в конце каждой задачи)
 
+- 2026-09-25 (волна 14 ✅, код+тесты+docs): **C15** — покрытие tools плагинов:
+  docker 28% → 100% (+17), k8s 29% → 92% (+19), netdiag 45% → 92% (+16),
+  redis 45% → 91% (+13); unit **76% → 85%**, **418 passed**. Новые файлы:
+  `test_docker_tools.py`, `test_kubernetes_tools.py`, `test_netdiag_tools.py`,
+  `test_redis_tools.py`. **E6** — композитные system tools `diagnose_host` /
+  `diagnose_web_service` в `agent_loop._register_system_tools` (параллельный
+  `asyncio.gather` через `_invoke_tool`; недоступный tool → `skipped`),
+  +7 тестов `TestDiagnoseTools`. Ловушка: `time.monotonic` патчить ТОЛЬКО как
+  имя в неймспейсе модуля (`setattr(mod, "time", ...)`), не атрибут глобального
+  `time` (его дёргает event loop). Убран мёртвый `get_config` из README EN/RU.
+  Docs: README EN/RU (System Tools + §Security: `diagnose_*` внутри обходят
+  rate-limit/audit), SKILLS (+2 системных tool, 3 → 5), TODO (C15/E6/волна 14).
+
+- 2026-09-25 (волна 15 ✅, тесты): **C16** — покрытие tools PostgreSQL/Linux/Nginx:
+  новые `test_postgres_tools.py`, `test_linux_tools.py`, `test_nginx_tools.py`; целевые
+  модули: PostgreSQL 100%, Linux 96%, Nginx 97% (были 42/56/68%). Проверены
+  успешные ответы, fallback-ветки, валидация параметров, degraded/error-сценарии,
+  shell/network-парсинг и HTTP-проверки без внешних PostgreSQL/Nginx/SSH-сервисов.
+  Runtime-код и MCP-контракт не менялись; пользовательская документация не требуется.
 - 2026-09-16: A1 ✅ (sync `main()` + `__main__.py`), A2 ✅ (`_main_async` + stop_event + тест),
   A5 ✅ / A6 ✅ (docs-only в `settings.yaml`), B10 ✅ (Trivy 0 HIGH/CRITICAL),
   тесты склеены 5→2 + `conftest.make_plugin`, README split 498→372+371,

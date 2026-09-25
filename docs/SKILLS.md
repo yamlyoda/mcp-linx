@@ -26,5 +26,7 @@ Skills in MCP-Linx follow the **Harness ideology**: skills are plugins that can 
 | `get_diagnostic_context` | Full diagnostic context with correlations |
 | `get_summary` | Status summary |
 | `system_health_check` | Health check all plugins |
+| `diagnose_host` | Parallel host snapshot (linux stats/processes/disk/memory/error logs) |
+| `diagnose_web_service` | Parallel web-service snapshot (nginx + systemd + optional http_check) |
 
-Total: 10 plugins / 56 tools + 3 system tools.
+Total: 10 plugins / 56 tools + 5 system tools.

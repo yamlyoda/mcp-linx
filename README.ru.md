@@ -331,7 +331,11 @@ plugins:
 - `system_health_check` — Health check of all plugins
 - `get_diagnostic_context` — Full diagnostic context
 - `get_summary` — Brief system status summary
-- `get_config` — Get current server configuration
+- `diagnose_host` — Параллельный срез хоста: статистика, топ-процессы, диск, память,
+  последние ошибки journalctl (плагин linux). Опциональный `host` — имя из `hosts:`.
+- `diagnose_web_service` — Параллельный срез веб-сервиса: статус nginx, systemd-юнит,
+  последние error-логи nginx, плюс `http_check`, если задан `url`.
+  Опциональные `service_name` (по умолчанию `nginx`) и `host`.
 
     kubeconfig: null      # null = ~/.kube/config
     context: null         # null = current-context
@@ -481,9 +485,12 @@ pytest tests/unit/test_new_plugins.py -v
 ## Security / Безопасность
 
 
-Rate limiting применяется к обработчикам плагинных инструментов; три системных
-инструмента (`get_diagnostic_context`, `get_summary`, `system_health_check`)
-регистрируются отдельно и лимитом не покрываются. Отказы лимита не аудируются.
+Rate limiting применяется к обработчикам плагинных инструментов; системные
+инструменты (`get_diagnostic_context`, `get_summary`, `system_health_check`,
+`diagnose_host`, `diagnose_web_service`) регистрируются отдельно и лимитом не
+покрываются. `diagnose_*` вызывают инструменты плагинов напрямую, поэтому их
+внутренние вызовы не лимитируются и не аудируются по отдельности.
+Отказы лимита не аудируются.
 
 SecurityGuard обеспечивает:
 - **Read-only режим**: Валидация команд блокирует команды записи (rm, write, mkfs, dd

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -312,6 +313,106 @@ class DefaultAgentLoop(AgentLoop):
                     k: {"status": r.status.value, "message": r.message} for k, r in results.items()
                 },
             }
+
+        async def _invoke_tool(
+            tool_name: str, params: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            """Найти инструмент по имени среди плагинов и выполнить его.
+
+            Возвращает словарь с ключами ``status``, ``data`` и ``error``;
+            при отсутствии плагина/инструмента возвращает ``status="skipped"``.
+            """
+            try:
+                tool: dict[str, Any] | None = None
+                for t in plugin_manager.get_tools():
+                    if t["name"] == tool_name:
+                        tool = t
+                        break
+                if tool is None:
+                    return {
+                        "status": "skipped",
+                        "data": None,
+                        "error": f"tool '{tool_name}' not available (plugin disabled or missing)",
+                    }
+                plugin = plugin_manager.get_plugin(tool["plugin_id"])
+                if plugin is None:
+                    return {
+                        "status": "skipped",
+                        "data": None,
+                        "error": f"plugin '{tool['plugin_id']}' not found",
+                    }
+                result = await tool["execute"](plugin, params or {})
+                return {
+                    "status": result.status.value,
+                    "data": result.data,
+                    "error": result.error_message,
+                    "suggestions": result.suggestions,
+                }
+            except Exception as e:
+                return {"status": "error", "data": None, "error": str(e)[:500]}
+
+        @mcp.tool(
+            name="diagnose_host",
+            description=(
+                "Быстрый срез здоровья хоста: linux_host_stats, linux_processes, "
+                "linux_disk, linux_memory, linux_logs (journalctl err). "
+                "host — имя из hosts: registry (опционально)."
+            ),
+        )
+        async def diagnose_host(host: str | None = None) -> dict[str, Any]:
+            tools = [
+                ("linux_host_stats", {"host": host} if host else {}),
+                ("linux_processes", {"host": host, "limit": 10} if host else {"limit": 10}),
+                ("linux_disk", {"host": host} if host else {}),
+                ("linux_memory", {"host": host} if host else {}),
+                (
+                    "linux_logs",
+                    {"host": host, "log_type": "journal", "priority": "err", "lines": 20}
+                    if host
+                    else {"log_type": "journal", "priority": "err", "lines": 20},
+                ),
+            ]
+            results = await asyncio.gather(*(_invoke_tool(name, params) for name, params in tools))
+            checks = {name: res for (name, _), res in zip(tools, results, strict=True)}
+            overall = (
+                "healthy" if all(v["status"] == "healthy" for v in checks.values()) else "degraded"
+            )
+            return {"overall": overall, "host": host, "checks": checks}
+
+        @mcp.tool(
+            name="diagnose_web_service",
+            description=(
+                "Срез веб-сервиса: nginx_status, systemd service_status, "
+                "nginx_logs (error), http_check (если задан url). "
+                "host — имя из hosts: registry (опционально)."
+            ),
+        )
+        async def diagnose_web_service(
+            service_name: str = "nginx",
+            host: str | None = None,
+            url: str | None = None,
+        ) -> dict[str, Any]:
+            tools: list[tuple[str, dict[str, Any]]] = [
+                ("nginx_status", {"host": host} if host else {}),
+                (
+                    "service_status",
+                    {"unit": service_name, "host": host} if host else {"unit": service_name},
+                ),
+                (
+                    "nginx_logs",
+                    {"host": host, "log_type": "error", "lines": 20}
+                    if host
+                    else {"log_type": "error", "lines": 20},
+                ),
+            ]
+            if url:
+                tools.append(("http_check", {"url": url}))
+            results = await asyncio.gather(*(_invoke_tool(name, params) for name, params in tools))
+            checks = {name: res for (name, _), res in zip(tools, results, strict=True)}
+            overall = (
+                "healthy" if all(v["status"] == "healthy" for v in checks.values()) else "degraded"
+            )
+            return {"overall": overall, "host": host, "service": service_name, "checks": checks}
 
         logger.info("Registered system tools")
 

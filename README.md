@@ -336,7 +336,11 @@ have no per-call cluster argument.
 - `system_health_check` — Health check of all plugins
 - `get_diagnostic_context` — Full diagnostic context
 - `get_summary` — Brief system status summary
-- `get_config` — Get current server configuration
+- `diagnose_host` — Parallel host snapshot: host stats, top processes, disk, memory,
+  recent error logs (linux plugin). Optional `host` — a name from the `hosts:` registry.
+- `diagnose_web_service` — Parallel web-service snapshot: nginx status, systemd unit
+  status, recent nginx error logs, plus `http_check` when `url` is given.
+  Optional `service_name` (default `nginx`) and `host`.
 
     kubeconfig: null      # null = ~/.kube/config
     context: null         # null = current-context
@@ -483,9 +487,11 @@ pytest tests/unit/test_new_plugins.py -v
 
 ## Security
 
-Rate limiting applies to plugin tool handlers only; the three system tools
-(`get_diagnostic_context`, `get_summary`, `system_health_check`) are registered
-separately and are not rate limited. Rejected calls are not audited.
+Rate limiting applies to plugin tool handlers only; the system tools
+(`get_diagnostic_context`, `get_summary`, `system_health_check`, `diagnose_host`,
+`diagnose_web_service`) are registered separately and are not rate limited.
+Note that `diagnose_*` invoke plugin tools directly, so their inner calls are
+neither rate limited nor audited individually. Rejected calls are not audited.
 
 SecurityGuard provides:
 - **Read-only mode**: Command validation blocks write commands (rm, write, mkfs, dd

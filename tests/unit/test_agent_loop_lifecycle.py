@@ -313,3 +313,136 @@ class TestSystemTools:
         component = loop._context_aggregator.get_component("linux")
         assert component is not None
         assert component.issues == ["boom"]
+
+
+class TestDiagnoseTools:
+    """Волна 14: композитные диагностические инструменты.
+
+    `diagnose_host`/`diagnose_web_service` вызывают инструменты плагинов
+    параллельно через `plugin_manager.get_tools()` и агрегируют статусы.
+    """
+
+    @staticmethod
+    def _manager_with_linux_tools(status: Status = Status.HEALTHY) -> _FakeManager:
+        async def _exec(plugin: Any, params: dict[str, Any]) -> ToolResult:
+            if status == Status.HEALTHY:
+                return ToolResult.ok({"params": params})
+            return ToolResult.error("tool failed")
+
+        names = ("linux_host_stats", "linux_processes", "linux_disk", "linux_memory", "linux_logs")
+        tools = [
+            {"name": n, "description": "", "plugin_id": "linux", "execute": _exec} for n in names
+        ]
+        return _FakeManager(plugins=[_FakePlugin("linux")], tools=tools)
+
+    @pytest.mark.asyncio
+    async def test_diagnose_host_registered(self):
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, _manager_with_tool())
+        assert {"diagnose_host", "diagnose_web_service"} <= set(mcp.tools)
+
+    @pytest.mark.asyncio
+    async def test_diagnose_host_healthy(self):
+        manager = self._manager_with_linux_tools()
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_host"](host=None)
+
+        assert result["overall"] == "healthy"
+        assert set(result["checks"]) == {
+            "linux_host_stats",
+            "linux_processes",
+            "linux_disk",
+            "linux_memory",
+            "linux_logs",
+        }
+        assert all(v["status"] == "healthy" for v in result["checks"].values())
+
+    @pytest.mark.asyncio
+    async def test_diagnose_host_passes_host_param(self):
+        manager = self._manager_with_linux_tools()
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_host"](host="web-1")
+
+        assert result["host"] == "web-1"
+        assert result["checks"]["linux_host_stats"]["data"]["params"]["host"] == "web-1"
+
+    @pytest.mark.asyncio
+    async def test_diagnose_host_degraded_on_tool_error(self):
+        manager = self._manager_with_linux_tools(status=Status.ERROR)
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_host"](host=None)
+
+        assert result["overall"] == "degraded"
+        assert all(v["status"] == "error" for v in result["checks"].values())
+
+    @pytest.mark.asyncio
+    async def test_diagnose_host_skips_missing_tools(self):
+        # Менеджер без инструментов linux: все проверки skipped, overall degraded
+        manager = _FakeManager(plugins=[], tools=[])
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_host"](host=None)
+
+        assert result["overall"] == "degraded"
+        assert all(v["status"] == "skipped" for v in result["checks"].values())
+
+    @pytest.mark.asyncio
+    async def test_diagnose_web_service_calls_expected_tools(self):
+        calls: list[tuple[str, dict[str, Any]]] = []
+
+        async def _exec_healthy(plugin: Any, params: dict[str, Any]) -> ToolResult:
+            return ToolResult.ok({})
+
+        tools = [
+            {"name": n, "description": "", "plugin_id": p, "execute": _exec_healthy}
+            for n, p in (
+                ("nginx_status", "nginx"),
+                ("service_status", "systemd"),
+                ("nginx_logs", "nginx"),
+            )
+        ]
+
+        async def _exec_http(plugin: Any, params: dict[str, Any]) -> ToolResult:
+            calls.append(("http_check", params))
+            return ToolResult.ok({"status_code": 200})
+
+        tools.append(
+            {"name": "http_check", "description": "", "plugin_id": "netdiag", "execute": _exec_http}
+        )
+        manager = _FakeManager(
+            plugins=[_FakePlugin(p) for p in ("nginx", "systemd", "netdiag")], tools=tools
+        )
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_web_service"](
+            service_name="myapp", url="https://example.com"
+        )
+
+        assert result["overall"] == "healthy"
+        assert result["service"] == "myapp"
+        assert set(result["checks"]) == {
+            "nginx_status",
+            "service_status",
+            "nginx_logs",
+            "http_check",
+        }
+        assert calls == [("http_check", {"url": "https://example.com"})]
+
+    @pytest.mark.asyncio
+    async def test_diagnose_web_service_without_url_skips_http(self):
+        manager = _FakeManager(plugins=[], tools=[])
+        mcp = _FakeMCP()
+        await loop_setup(DefaultAgentLoop(), mcp, manager)
+
+        result = await mcp.tools["diagnose_web_service"]()
+
+        assert "http_check" not in result["checks"]
+        assert result["overall"] == "degraded"  # все skipped
