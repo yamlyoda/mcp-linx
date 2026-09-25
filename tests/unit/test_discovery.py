@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 EXPECTED_PLUGINS = 10
-EXPECTED_TOOLS = 56
+EXPECTED_TOOLS = 57
 
 
 def _discovery_counts() -> tuple[int, int]:

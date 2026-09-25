@@ -256,7 +256,7 @@ have no per-call cluster argument.
 
 ## Tools
 
-### Linux Plugin (8 tools)
+### Linux Plugin (9 tools)
 - `linux_host_stats` — Host statistics: CPU, memory, disk, load
 - `linux_processes` — List of running processes
 - `linux_logs` — Read system logs (journalctl, syslog)
@@ -264,6 +264,8 @@ have no per-call cluster argument.
 - `linux_firewall` — Firewall snapshot: nftables + policy routing (read-only)
 - `linux_disk` — Disk and filesystem usage
 - `linux_memory` — Detailed memory usage information
+- `linux_file_diagnostics` — File path, permissions, immutable attributes, mount and
+  service-user write check (read-only; user check requires `plugins.linux.privileged_tools: true`)
 - `linux_execute_command` — Execute an arbitrary read-only command
 
 ### Nginx Plugin (5 tools)
@@ -444,9 +446,9 @@ mcp-linx/
 │   │   ├── ssh.py            # SSH adapter (paramiko)
 │   │   ├── ssh_pool.py       # SSHConnectionPool + RemoteHostAdapter (multi-host)
 │   │   └── docker.py         # Docker API adapter
-│   └── plugins/              # Auto-discovered plugins (10 total, 56 tools)
+│   └── plugins/              # Auto-discovered plugins (10 total, 57 tools)
 │       ├── base.py           # DiagnosticPlugin base class (+ `host` resolution)
-│       ├── linux/            # 8 tools
+│       ├── linux/            # 9 tools
 │       ├── nginx/            # 5 tools
 │       ├── docker/           # 7 tools
 │       ├── postgres/         # 7 tools

@@ -29,4 +29,4 @@ Skills in MCP-Linx follow the **Harness ideology**: skills are plugins that can 
 | `diagnose_host` | Parallel host snapshot (linux stats/processes/disk/memory/error logs) |
 | `diagnose_web_service` | Parallel web-service snapshot (nginx + systemd + optional http_check) |
 
-Total: 10 plugins / 56 tools + 5 system tools.
+Total: 10 plugins / 57 tools + 5 system tools.

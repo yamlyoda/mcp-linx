@@ -42,6 +42,10 @@ class TestSecurityGuard:
         guard.validate_command("df -h")
         guard.validate_command("cat /proc/cpuinfo")
         guard.validate_command("journalctl -n 100")
+        guard.validate_command("stat -c '%a' /var/log/service.log")
+        guard.validate_command("namei -l /var/log/service.log")
+        guard.validate_command("lsattr -d /var/log/service.log")
+        guard.validate_command("findmnt -T /var/log/service.log")
 
     def test_validate_command_blocks_dangerous(self, guard: SecurityGuard):
         """Опасные команды блокируются"""

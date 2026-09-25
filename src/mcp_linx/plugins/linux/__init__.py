@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
+import shlex
 from typing import Any
 
 from mcp_linx.adapters.base import BaseAdapter, LocalAdapter
 from mcp_linx.adapters.ssh import SSHAdapter
 from mcp_linx.plugins.base import DiagnosticPlugin, PluginTool
-from mcp_linx.security import SecurityGuard
+from mcp_linx.security import SecurityError, SecurityGuard
 from mcp_linx.types import HealthStatus, PluginConfig, Status
 from mcp_linx.types import ToolResult as ToolResult
 
@@ -23,11 +25,13 @@ class LinuxPlugin(DiagnosticPlugin):
     def __init__(self):
         self._adapter: BaseAdapter | None = None
         self._security: SecurityGuard | None = None
+        self._config: PluginConfig | None = None
 
     def get_tools(self) -> list[PluginTool]:
         from mcp_linx.plugins.linux.tools import (
             linux_disk,
             linux_execute_command,
+            linux_file_diagnostics,
             linux_firewall,
             linux_host_stats,
             linux_logs,
@@ -57,6 +61,11 @@ class LinuxPlugin(DiagnosticPlugin):
                 "linux_memory", "Детальная информация об использовании памяти", linux_memory
             ),
             PluginTool(
+                "linux_file_diagnostics",
+                "Диагностика прав, атрибутов и пути файла (read-only)",
+                linux_file_diagnostics,
+            ),
+            PluginTool(
                 "linux_execute_command",
                 "Выполнение произвольной read-only команды",
                 linux_execute_command,
@@ -64,6 +73,7 @@ class LinuxPlugin(DiagnosticPlugin):
         ]
 
     async def initialize(self, config: PluginConfig) -> None:
+        self._config = config
         ssh_config = config.get("ssh", {})
         host = ssh_config.get("host")
 
@@ -123,6 +133,43 @@ class LinuxPlugin(DiagnosticPlugin):
             # Пустой whitelist (allowed_hosts: []) = multi-host без ограничений.
             self._security.validate_host(host)
 
+        try:
+            result = await self._resolve_adapter(host).execute_command(command, timeout)
+            result["stdout"] = self._security.limit_log_lines(result["stdout"])
+            return result
+        except Exception as e:
+            return {"stdout": "", "stderr": str(e), "returncode": 1, "command": command}
+
+    async def _run_privileged(
+        self, command: str, timeout: int | None = None, host: str | None = None
+    ) -> dict[str, Any]:
+        """Выполнить только безопасную проверку ``test -w`` от сервисного user.
+
+        ``runuser`` намеренно не входит в общий READONLY_COMMANDS: через него
+        нельзя выполнять произвольные команды. Здесь принимается ровно форма
+        ``runuser -u USER -- test -w PATH``.
+        """
+        if not self._security:
+            raise RuntimeError("Plugin not initialized")
+        try:
+            parts = shlex.split(command)
+        except ValueError as e:
+            raise SecurityError(f"Invalid privileged command: {e}") from e
+        if (
+            len(parts) != 7
+            or parts[0] != "runuser"
+            or parts[1] != "-u"
+            or parts[3] != "--"
+            or parts[4:6] != ["test", "-w"]
+        ):
+            raise SecurityError("Privileged command is not an allowed test -w probe")
+        for pattern in self._security.DANGEROUS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                raise SecurityError(f"Potentially dangerous command blocked: {command[:120]}")
+        if host is not None:
+            self._security.validate_host(host)
+        if timeout is None:
+            timeout = self.command_timeout
         try:
             result = await self._resolve_adapter(host).execute_command(command, timeout)
             result["stdout"] = self._security.limit_log_lines(result["stdout"])

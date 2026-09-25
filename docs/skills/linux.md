@@ -2,7 +2,7 @@
 
 Часть Skills (см. `docs/SKILLS.md`). Связки: `workflows.md`, корреляции — `correlations.md`.
 
-## Linux Diagnostics (8 tools)
+## Linux Diagnostics (9 tools)
 
 Все 8 инструментов принимают `host=<имя из hosts:>` — команда выполняется на удалённом хосте по SSH (без `host` — локально).
 
@@ -15,6 +15,7 @@
 | `linux_firewall` | Firewall snapshot: nftables + iptables + policy routing (read-only) |
 | `linux_disk` | Disk usage |
 | `linux_memory` | Memory details |
+| `linux_file_diagnostics` | File path, permissions, immutable attributes, mount and service-user write check (read-only) |
 | `linux_execute_command` | Execute read-only commands |
 
 `linux_firewall` закрывает слепую зону INCIDENT_504: `iptables -L` не показывает nft-правила (skuid → fwmark) и blackhole-таблицы. Собирает `nft list ruleset`, `ip rule`, все таблицы маршрутов, `ufw status`.

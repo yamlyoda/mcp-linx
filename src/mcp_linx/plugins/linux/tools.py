@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from typing import Any
 
@@ -24,6 +25,9 @@ _ALLOWED_LOG_FILES = {
     "dmesg",
     "lastlog",
 }
+
+_FILE_UNIT_RE = re.compile(r"^[A-Za-z0-9@:_.\-]+\.(service|socket|timer|target|mount|device)$")
+_FILE_USER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,31}$")
 
 
 async def linux_logs(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
@@ -351,3 +355,142 @@ async def linux_execute_command(plugin: LinuxPlugin, params: dict[str, Any]) -> 
     result = await plugin._run_command(command, timeout, host=host)
 
     return ToolResult.ok(result)
+
+
+async def linux_file_diagnostics(plugin: LinuxPlugin, params: dict[str, Any]) -> ToolResult:
+    """Проверить путь, права, атрибуты и доступность записи к файлу.
+
+    Все основные команды read-only. Проверка ``test -w`` от сервисного user
+    выполняется только при ``plugins.linux.privileged_tools=true`` и через
+    отдельный строгий runner; команда ``chattr`` намеренно не поддерживается.
+    """
+    host = params.get("host")
+    path = str(params.get("path", "")).strip()
+    unit = str(params.get("unit", "")).strip() or None
+    user = str(params.get("user", "")).strip() or None
+
+    if not path.startswith("/") or "\x00" in path or "\n" in path or "\r" in path:
+        return ToolResult.error("Param 'path' must be an absolute path without NUL/newlines")
+    if len(path) > 4096:
+        return ToolResult.error("Param 'path' is too long")
+    if unit and not _FILE_UNIT_RE.fullmatch(unit):
+        return ToolResult.error("Param 'unit' must be a valid systemd unit name")
+    if user and not _FILE_USER_RE.fullmatch(user):
+        return ToolResult.error("Param 'user' must be a valid local user name")
+    try:
+        timeout = max(2, min(int(params.get("timeout", 10)), 30))
+    except (TypeError, ValueError):
+        return ToolResult.error("Param 'timeout' must be an integer")
+
+    quoted_path = shlex.quote(path)
+    checks: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    commands = {
+        "stat": f"stat -c '%a|%A|%U|%G|%u|%g|%s|%F' -- {quoted_path}",
+        "namei": f"namei -l {quoted_path}",
+        "attributes": f"lsattr -d -- {quoted_path}",
+        "mount": f"findmnt -T {quoted_path} -o TARGET,SOURCE,FSTYPE,OPTIONS",
+        "disk": f"df -h -- {quoted_path}",
+    }
+    for key, command in commands.items():
+        result = await plugin._run_command(command, timeout=timeout, host=host)
+        checks[key] = result
+        if result.get("returncode", 1) != 0:
+            errors.append(f"{key}: {result.get('stderr', '').strip() or 'command failed'}")
+
+    stat_parts = checks["stat"].get("stdout", "").strip().split("|", 7)
+    stat_data: dict[str, Any] = {"raw": checks["stat"].get("stdout", "").strip()}
+    if len(stat_parts) == 8:
+        stat_data.update(
+            {
+                "mode": stat_parts[0],
+                "permissions": stat_parts[1],
+                "owner": stat_parts[2],
+                "group": stat_parts[3],
+                "uid": stat_parts[4],
+                "gid": stat_parts[5],
+                "size": stat_parts[6],
+                "type": stat_parts[7],
+            }
+        )
+
+    attributes_raw = checks["attributes"].get("stdout", "").strip()
+    attribute_token = attributes_raw.split()[0] if attributes_raw else ""
+    immutable = bool(attribute_token and "i" in attribute_token)
+    if immutable:
+        errors.append("file has immutable attribute (i)")
+
+    unit_properties: dict[str, str] = {}
+    unit_data: dict[str, Any] | None = None
+    if unit:
+        unit_command = (
+            f"systemctl show {shlex.quote(unit)} --no-pager "
+            "-p User -p Group -p DynamicUser -p ProtectSystem -p ReadOnlyPaths "
+            "-p ReadWritePaths -p InaccessiblePaths -p MainPID"
+        )
+        unit_result = await plugin._run_command(unit_command, timeout=timeout, host=host)
+        unit_data = {"name": unit, "raw": unit_result.get("stdout", "").strip()}
+        for line in unit_result.get("stdout", "").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                unit_properties[key] = value
+        unit_data["properties"] = unit_properties
+        if unit_result.get("returncode", 1) != 0:
+            errors.append(f"systemd: {unit_result.get('stderr', '').strip() or 'command failed'}")
+
+    effective_user = user or (unit_properties.get("User") if unit_properties else None)
+    write_check: dict[str, Any] = {"user": effective_user}
+    if not effective_user:
+        write_check.update(
+            {
+                "status": "skipped",
+                "writable": None,
+                "reason": "service user is unknown; pass user or unit",
+            }
+        )
+    else:
+        config = getattr(plugin, "_config", None) or {}
+        if not bool(config.get("privileged_tools", False)):
+            write_check.update(
+                {
+                    "status": "skipped",
+                    "writable": None,
+                    "reason": "set plugins.linux.privileged_tools=true to run test -w as user",
+                }
+            )
+            errors.append("write check skipped: privileged_tools is disabled")
+        else:
+            command = f"runuser -u {shlex.quote(effective_user)} -- test -w {quoted_path}"
+            try:
+                write_result = await plugin._run_privileged(command, timeout, host=host)
+            except Exception as e:
+                write_result = {"stdout": "", "stderr": str(e), "returncode": 1}
+            writable = write_result.get("returncode", 1) == 0
+            write_check.update(
+                {
+                    "status": "ok" if writable else "error",
+                    "writable": writable,
+                    "returncode": write_result.get("returncode"),
+                    "error": write_result.get("stderr", "").strip()[:500],
+                }
+            )
+            if not writable:
+                errors.append(f"user {effective_user} cannot write to path")
+
+    data = {
+        "path": path,
+        "file_exists": checks["stat"].get("returncode", 1) == 0,
+        "stat": stat_data,
+        "path_chain": checks["namei"].get("stdout", ""),
+        "attributes": {"raw": attributes_raw, "immutable": immutable},
+        "filesystem": {
+            "mount": checks["mount"].get("stdout", ""),
+            "disk": checks["disk"].get("stdout", ""),
+        },
+        "systemd": unit_data,
+        "write_check": write_check,
+        "errors": errors,
+    }
+    if errors:
+        return ToolResult.degraded(data, errors)
+    return ToolResult.ok(data)

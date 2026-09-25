@@ -50,7 +50,7 @@ jobs:
           print(f'plugins: {n} | tools: {len(pm.get_tools())}')
           # B5: точные счётчики (было >= 10 / >= 50) — ловят дрейф плагинов/инструментов
           assert n == 10, f'plugin count drift: {n} != 10'
-          assert len(pm.get_tools()) == 56, f'tool count drift: {len(pm.get_tools())} != 56'
+          assert len(pm.get_tools()) == 57, f'tool count drift: {len(pm.get_tools())} != 57'
           "
 
   integration:

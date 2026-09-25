@@ -49,6 +49,11 @@ prom_alerts → prom_targets → prom_query → linux_host_stats
 log_labels → log_search → log_tail → docker_logs
 ```
 
+### Service Log Write Failure
+```
+service_status → service_logs → linux_file_diagnostics(path, unit, user?) → lsattr/write-access evidence
+```
+
 ### 504 Gateway Timeout (INCIDENT_504)
 ```
 nginx_upstream (proxy_connect_timeout_s, connect_ms) → tcp_connect_as (www-data) → linux_firewall (marks/blackhole) → service_ip_filter (eBPF whitelist) → tcpdump_probe (0 пакетов = дроп ниже интерфейса)

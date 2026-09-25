@@ -6,6 +6,12 @@
 
 ## 0. Статус сессии (обновлять в конце каждой задачи)
 
+- 2026-09-25 (волна 17 ✅, код+тесты+docs): **E7** — read-only `linux_file_diagnostics`
+  для проверки пути, `stat`/`namei`/`lsattr`, mount/space и свойств unit-а; опциональный
+  `test -w` от service-user через строгий `runuser`-runner и `plugins.linux.privileged_tools`.
+  `chattr` не автоматизируется. Обновлены CI/docs и добавлен отчёт по service.log.
+  Гейт: 481 passed, 5 skipped; Ruff/mypy/Bandit/YAML/docs/diff — зелёные.
+
 - 2026-09-25 (волна 14 ✅, код+тесты+docs): **C15** — покрытие tools плагинов:
   docker 28% → 100% (+17), k8s 29% → 92% (+19), netdiag 45% → 92% (+16),
   redis 45% → 91% (+13); unit **76% → 85%**, **418 passed**. Новые файлы:

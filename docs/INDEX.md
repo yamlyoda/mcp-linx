@@ -8,10 +8,10 @@
 
 | Файл | Строк | Когда читать |
 |---|---|---|
-| `AGENTS.md` | 254 | ВСЕГДА первым: карта репо, команды, факты, протоколы |
-| `README.md` | 529 | Только нужная секция: Installation / Running / Docker / Configuration / Security |
-| `README.ru.md` | 528 | Русская версия; EN — канон при расхождениях |
-| `TODO.md` | 235 | Живой бэклог: пункты A–G + волны §G. Читать целиком можно (короткий) |
+| `AGENTS.md` | 260 | ВСЕГДА первым: карта репо, команды, факты, протоколы |
+| `README.md` | 531 | Только нужная секция: Installation / Running / Docker / Configuration / Security |
+| `README.ru.md` | 531 | Русская версия; EN — канон при расхождениях |
+| `TODO.md` | 236 | Живой бэклог: пункты A–G + волны §G. Читать целиком можно (короткий) |
 | `CHANGELOG.md` | 324 | Архив фаз. Только `tail -40`, никогда целиком |
 | `SECURITY.md` | 279 | Аудит и чек-лист (§Security Checklist), ограничения подстановки секретов, CI-сканеры |
 | `REMOTE_TROUBLESHOOTING.md` | 210 | Роадмап remote/SSH: статусы #1–#8 (что FIXED, что TODO) |
@@ -26,6 +26,7 @@
 | `docs/DEVELOPMENT.md` | 296 | Setup, env/секреты, аудит, shutdown, тесты — для onboard-задач |
 | `docs/SKILLS.md` | 32 | Индекс system tools (краткий, можно целиком) |
 | `docs/INCIDENT_504.md` | 111 | Разбор 504 nginx→Go→PostgreSQL + runbook; для netdiag/pg-задач |
+| `docs/INCIDENT_SERVICE_LOG.md` | 182 | Отчёт об устранении ошибки записи Python-сервиса в `/var/log/service.log` |
 | `docs/HARNESS_ANALYSIS.md` | 195 | Идеология Harness vs текущее состояние (перенесён из корня, C6); статусы актуализированы 2026-09-18 |
 | `docs/skills/` | — | По одному файлу на скилл, по мере нужды |
 

@@ -251,7 +251,7 @@ plugins:
 
 ## Tools / Инструменты
 
-### Linux Plugin (8 tools)
+### Linux Plugin (9 tools)
 - `linux_host_stats` — Host statistics: CPU, memory, disk, load
 - `linux_processes` — List of running processes
 - `linux_logs` — Read system logs (journalctl, syslog)
@@ -259,6 +259,9 @@ plugins:
 - `linux_firewall` — Firewall snapshot: nftables + policy routing (read-only)
 - `linux_disk` — Disk and filesystem usage
 - `linux_memory` — Detailed memory usage information
+- `linux_file_diagnostics` — Диагностика пути, прав, immutable-атрибута, mount и
+  записи от пользователя сервиса (read-only; проверка пользователя требует
+  `plugins.linux.privileged_tools: true`)
 - `linux_execute_command` — Execute an arbitrary read-only command
 
 ### Nginx Plugin (5 tools)
@@ -441,9 +444,9 @@ mcp-linx/
 │   │   ├── ssh.py            # SSH адаптер (paramiko)
 │   │   ├── ssh_pool.py       # SSHConnectionPool + RemoteHostAdapter (мультихост)
 │   │   └── docker.py         # Docker API адаптер
-│   └── plugins/              # Автообнаружаемые плагины (10 всего, 56 инструментов)
+│   └── plugins/              # Автообнаружаемые плагины (10 всего, 57 инструментов)
 │       ├── base.py           # Базовый DiagnosticPlugin (+ резолв `host`)
-│       ├── linux/            # 8 инструментов
+│       ├── linux/            # 9 инструментов
 │       ├── nginx/            # 5 инструментов
 │       ├── docker/           # 7 инструментов
 │       ├── postgres/         # 7 инструментов
