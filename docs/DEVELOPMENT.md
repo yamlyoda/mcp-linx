@@ -137,6 +137,24 @@ Runtime SSH tuning lives in YAML, not in the environment: `retry_attempts` /
 `retry_backoff_seconds` and the PostgreSQL tunnel (`plugins.postgres.ssh.tunnel`) are
 described in README → "SSH reliability: retries and tunnels".
 
+### End-to-end SSH test (opt-in)
+
+The tunnel/jump-host code paths are covered by unit tests with a fake transport; a real
+SSH server is only needed for the end-to-end test, so it is skipped unless configured:
+
+```bash
+MCP_LINX_SSH_HOST=10.0.0.5 \
+MCP_LINX_SSH_USER=ops \
+MCP_LINX_SSH_KEY=~/.ssh/id_rsa \
+pytest -m integration tests/integration/test_ssh_tunnel_e2e.py -q
+```
+
+Optional variables: `MCP_LINX_SSH_PORT` (default 22), `MCP_LINX_SSH_REMOTE_PORT`
+(remote side of the forward, default 22 — the sshd itself, so the tunnel is verified by
+reading the SSH banner), `MCP_LINX_SSH_JUMP` (bastion for the E3 path),
+`MCP_LINX_SSH_HOST_KEY_POLICY` (default `auto_add` for throwaway test hosts). CI has no
+SSH host, so these tests are always skipped there.
+
 ## Testing
 
 ```bash

@@ -91,8 +91,22 @@
   `import mcp_linx.main as m` (возвращает функцию) — в тесте модуль берётся через
   `importlib.import_module`. Доки не менялись (только `TODO`/`AGENTS` + CI-гейт).
 
-- Открыты: **E3**, **E4**, сквозная проверка E2 на реальном SSH, Python 3.13 и
-  полный integration в CI.
+- 2026-09-18 (волна 13 ✅, код+docs): **E3** jump host/bastion —
+  `SSHConnectionPool._connect` открывает `direct-tcpip` на бастионе и передаёт канал
+  в `connect(sock=...)`, `_jump_config` маппит `jump_*` (наследуя `host_key_policy`/
+  `known_hosts`), бастион закрывается вместе с целью (`_jump_clients`, `drop`,
+  `close_all`); тесты `test_ssh_jump.py` (+9). **E4a** — k8s multi-cluster
+  задокументирован (один кластер на инстанс, `kubeconfig`/`context`).
+  **E4b** — PostgreSQL multi-target: `plugins.postgres.targets.<имя>` + `host` у `pg_*`
+  (12 call-sites), свой коннект/туннель на таргет, кэш, закрытие в `destroy()`;
+  тесты `test_postgres_targets.py` (+11). **C14** — opt-in E2E-тест реального SSH
+  (`tests/integration/test_ssh_tunnel_e2e.py`: баннер через туннель, команда,
+  переиспользование; скип без env). Docs: README EN/RU (jump host, PG multi-target,
+  k8s multi-cluster), DEVELOPMENT (запуск E2E), settings.yaml, REMOTE #5.
+
+- Открыты: **Python 3.13** и полный integration в CI (ожидают пуша), auth (F#13 —
+  решение: вне объёма stdio, см. D7), сабагенты и подключение компакторов
+  (осознанно не делаем — HARNESS_ANALYSIS).
 
 ## 1. Карта репо
 
