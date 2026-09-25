@@ -66,7 +66,11 @@ RUN apt-get update \
         iproute2 \
         dnsutils \
         procps \
-    && apt-get install -y --only-upgrade --no-install-recommends gzip libpcre2-8-0 libsqlite3-0 \
+    && apt-get install -y --only-upgrade --no-install-recommends \
+        gzip \
+        libpcre2-8-0 \
+        libsqlite3-0 \
+        bind9-dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Непривилегированный пользователь

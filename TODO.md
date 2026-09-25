@@ -124,6 +124,9 @@
     3. **Dockerfile (apt-слой)**: `apt-get install --only-upgrade gzip libpcre2-8-0 libsqlite3-0` — закрывает 5 Debian HIGH (CVE-2026-41992/86145/89161/11822/11824) из базового `python:3.11-slim`; security/updates-суиты уже есть в deb822 `debian.sources`, кастомные `.list` не нужны.
   - Полный per-CVE лист — в артефакте `trivy-results` (json).
   - B9 actions SHA закрыт 2026-09-17; пиннинг Docker `FROM` по digest остаётся отдельным follow-up.
+- [x] **B11 (FIXED 2026-09-25). Регрессия CI из-за новых bind9 CVE и локального docs-файла.**
+  - `dnsutils` transitively установил bind9 `1:9.20.27-1~deb13u2` с 21 patchable HIGH. Runtime-слой теперь обновляет `bind9-dnsutils` (`1:9.20.29-1~deb13u1`); HIGH/CRITICAL gate и secret scanning не ослаблены. Docker build OK; Trivy: 0 HIGH/CRITICAL, 0 secrets, exit 0.
+  - `diagnosis_state.md` намеренно gitignored. `docs/INDEX.md` больше не заявляет числовой размер, а docs-тест не требует локальный файл в CI; проверка остальных документов и их счётчиков сохранена.
 
 <a name="C"></a>
 ### C. Упаковка и гигиена репозитория
@@ -223,6 +226,8 @@
 - [x] **Волна 12 — покрытие (2026-09-18):** C13 ✅ (`agent_loop` 47% → 96%, `main.py` 80% → 100%, `loki`/`prometheus` 19% → 92%/89%), покрытие unit **68.67% → 75%**, CI-гейт **65 → 72**; Python 3.12 прогоняется локально.
 - [x] **Волна 13 — фичи и проверяемость (2026-09-18):** E3 ✅ (jump host), E4a ✅ (k8s multi-cluster — docs), E4b ✅ (PG multi-target), C14 ✅ (opt-in E2E-тест реального SSH).
 - [x] **Волна 14 — покрытие tools + композитная диагностика (2026-09-25):** C15 ✅ (docker 28% → 100%, k8s 29% → 92%, netdiag 45% → 92%, redis 45% → 91%; unit **76% → 85%**, 346 → 418 passed), E6 ✅ (`diagnose_host` / `diagnose_web_service` — параллельные композитные срезы, +7 тестов). Заодно убран мёртвый `get_config` из README EN/RU (такого инструмента не существовало).
+- [x] **Волна 15 — покрытие tools (2026-09-25):** C16 ✅ (`postgres/tools.py` 42% → 100%, Linux 56% → 96%, Nginx 68% → 97%); полный гейт **472 passed, 5 skipped**, unit coverage **90.35%**.
+- [x] **Волна 16 — CI fixes (2026-09-25):** B11 ✅ — обновлён bind9 в образе (Trivy: 0 HIGH/CRITICAL, 0 secrets), исправлен docs-guard для локального `diagnosis_state.md`.
 
 Открыты вне волн: Python 3.13 и полный integration в CI (ожидают пуша), F#13 (auth — решение принято: вне объёма stdio, см. D7), «Сабагенты» и подключение компакторов (осознанно не делаем — см. HARNESS_ANALYSIS).
 

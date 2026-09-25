@@ -25,6 +25,11 @@
   успешные ответы, fallback-ветки, валидация параметров, degraded/error-сценарии,
   shell/network-парсинг и HTTP-проверки без внешних PostgreSQL/Nginx/SSH-сервисов.
   Runtime-код и MCP-контракт не менялись; пользовательская документация не требуется.
+- 2026-09-25 (волна 16 ✅, CI): docs-guard больше не требует локальный
+  gitignored `diagnosis_state.md`; его счётчик заменён на `—`. Trivy выявил
+  21 patchable HIGH в bind9 из `dnsutils`; runtime-слой обновляет
+  `bind9-dnsutils` до `1:9.20.29-1~deb13u1`. Docker build OK; Trivy v0.74:
+  0 HIGH/CRITICAL, 0 secrets, exit 0. Полный pytest: 472 passed, 5 skipped.
 - 2026-09-16: A1 ✅ (sync `main()` + `__main__.py`), A2 ✅ (`_main_async` + stop_event + тест),
   A5 ✅ / A6 ✅ (docs-only в `settings.yaml`), B10 ✅ (Trivy 0 HIGH/CRITICAL),
   тесты склеены 5→2 + `conftest.make_plugin`, README split 498→372+371,

@@ -20,6 +20,7 @@ INDEX = REPO_ROOT / "docs" / "INDEX.md"
 
 # | `path/to/file.md` | 123 | описание
 _ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*(\d+)")
+_PATH_ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|")
 
 
 def _claimed_counts() -> dict[str, int]:
@@ -36,7 +37,13 @@ def _actual_count(path: Path) -> int:
 
 
 def _documented_paths() -> set[str]:
-    return set(_claimed_counts())
+    return {
+        match.group(1)
+        for match in (
+            _PATH_ROW.match(line) for line in INDEX.read_text(encoding="utf-8").splitlines()
+        )
+        if match
+    }
 
 
 def test_claimed_line_counts_match_files():
